@@ -12,6 +12,7 @@ A React + Vite dashboard that auto-loads Aave loan positions from a wallet addre
 ## Features
 
 - Wallet-only input UX.
+- Optional query-string wallet input (`wallet`, `address`, or `walletAddress`) with auto-fetch on load when valid.
 - Multi-market support:
   - `proto_mainnet_v3`
   - `proto_lido_v3`
@@ -71,6 +72,14 @@ npm run dev
 
 4. Open the local URL shown by Vite (usually `http://localhost:5173`).
 
+5. Optional: prefill wallet from query string:
+
+```text
+http://localhost:5173/?wallet=0xYourEthereumAddress
+```
+
+Supported query params: `wallet`, `address`, `walletAddress`.
+
 ## Scripts
 
 ```bash
@@ -83,7 +92,7 @@ npm run preview     # preview production build
 
 ## How It Works
 
-1. User enters an Ethereum wallet address.
+1. User enters an Ethereum wallet address, or provides it via query string (`wallet`, `address`, or `walletAddress`).
 2. App queries Aave subgraph data for supported markets.
 3. Reserves are grouped into loan positions per market.
 4. Token prices are fetched from CoinGecko.
