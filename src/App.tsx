@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
+import { formatDistance } from 'date-fns';
 import { AlertTriangle, Info, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
 import { Badge, type BadgeVariant } from './components/ui/badge';
 import { Button } from './components/ui/button';
@@ -88,6 +97,7 @@ type Computed = {
 
 const GRAPH_API_KEY = import.meta.env.VITE_THE_GRAPH_API_KEY as string | undefined;
 const COINGECKO_API_KEY = import.meta.env.VITE_COINGECKO_API_KEY as string | undefined;
+const UPDATE_RATE_MS = 120_000;
 
 const AAVE_MARKETS = [
   {
@@ -175,6 +185,13 @@ function fmtAmount(value: number, digits = 4): string {
   });
 }
 
+function fmtTimeAgo(value: string, now: number): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  if (date.getTime() >= now) return 'just now';
+  return formatDistance(date, new Date(now), { addSuffix: true });
+}
+
 function parseBalance(raw: string, decimals: number): number {
   const normalized = Number(raw) / 10 ** decimals;
   return Number.isFinite(normalized) ? normalized : 0;
@@ -205,6 +222,37 @@ function healthLabel(hf: number): { label: string; tone: BadgeTone } {
   if (hf < 1.5) return { label: 'Tight', tone: 'warning' };
   if (hf < 2) return { label: 'OK', tone: 'neutral' };
   return { label: 'Safe', tone: 'positive' };
+}
+
+function portfolioHealthFactorBand(hf: number): { guidance: string; valueClassName: string } {
+  if (!Number.isFinite(hf) || hf <= 0) {
+    return {
+      guidance: 'Invalid reading',
+      valueClassName: 'text-[#ef4444]',
+    };
+  }
+  if (hf < 1.5) {
+    return {
+      guidance: 'Mandatory deleveraging',
+      valueClassName: 'text-[#ef4444]',
+    };
+  }
+  if (hf < 1.8) {
+    return {
+      guidance: 'Top up collateral or reduce debt',
+      valueClassName: 'text-[#f59e0b]',
+    };
+  }
+  if (hf <= 2.2) {
+    return {
+      guidance: 'No new leverage, monitor closely',
+      valueClassName: 'text-[#84cc16]',
+    };
+  }
+  return {
+    guidance: 'Normal operation',
+    valueClassName: 'text-[#22c55e]',
+  };
 }
 
 function toBadgeVariant(tone: BadgeTone): BadgeVariant {
@@ -542,6 +590,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [result, setResult] = useState<FetchState | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const hasAutoFetchedFromQuery = useRef(false);
 
   const selectedLoan = useMemo(() => {
@@ -588,8 +637,12 @@ export default function App() {
       borrowPowerUsed: totalMaxBorrow > 0 ? totalDebt / totalMaxBorrow : 0,
     };
   }, [result]);
+  const portfolioHealthBand = useMemo(
+    () => portfolioHealthFactorBand(portfolio?.averageHealthFactor ?? NaN),
+    [portfolio],
+  );
 
-  const fetchLoans = async (normalizedWallet: string) => {
+  const fetchLoans = useCallback(async (normalizedWallet: string) => {
     setError('');
     setIsLoading(true);
 
@@ -598,13 +651,17 @@ export default function App() {
       const reserveSymbols = Array.from(new Set(reserves.map((entry) => entry.reserve.symbol)));
       const prices = await fetchUsdPrices(reserveSymbols);
       const loans = buildLoanPositions(reserves, prices);
+      const updatedAt = Date.now();
 
+      setNow(updatedAt);
       setResult({
         wallet: normalizedWallet,
         loans,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: new Date(updatedAt).toISOString(),
       });
-      setSelectedLoanId(loans[0]?.id ?? '');
+      setSelectedLoanId((previousLoanId) =>
+        loans.some((loan) => loan.id === previousLoanId) ? previousLoanId : (loans[0]?.id ?? ''),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch loan data.';
       setError(message);
@@ -612,7 +669,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (hasAutoFetchedFromQuery.current) return;
@@ -622,12 +679,46 @@ export default function App() {
 
     hasAutoFetchedFromQuery.current = true;
     void fetchLoans(walletFromQuery);
+  }, [fetchLoans]);
+
+  useEffect(() => {
+    if (!result?.wallet) return;
+
+    const timerId = window.setInterval(() => {
+      if (isLoading) return;
+      void fetchLoans(result.wallet);
+    }, UPDATE_RATE_MS);
+
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [result?.wallet, isLoading, fetchLoans]);
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 10_000);
+
+    return () => {
+      window.clearInterval(timerId);
+    };
   }, []);
 
   const handleFetch = async (event: FormEvent) => {
     event.preventDefault();
 
     const normalizedWallet = wallet.trim();
+    if (!ETHEREUM_ADDRESS_REGEX.test(normalizedWallet)) {
+      setError('Please enter a valid Ethereum wallet address.');
+      setResult(null);
+      return;
+    }
+
+    await fetchLoans(normalizedWallet);
+  };
+
+  const handleRefresh = async () => {
+    const normalizedWallet = result?.wallet ?? wallet.trim();
     if (!ETHEREUM_ADDRESS_REGEX.test(normalizedWallet)) {
       setError('Please enter a valid Ethereum wallet address.');
       setResult(null);
@@ -681,6 +772,16 @@ export default function App() {
               {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Wallet size={16} />}
               {isLoading ? 'Fetching loans...' : 'Fetch loans'}
             </Button>
+            <Button
+              className="max-[980px]:w-full max-[980px]:max-w-full"
+              type="button"
+              variant="secondary"
+              onClick={handleRefresh}
+              disabled={isLoading}
+            >
+              <RefreshCw size={16} className={isLoading ? 'animate-spin' : undefined} />
+              Refresh
+            </Button>
           </form>
 
           {error ? (
@@ -700,7 +801,7 @@ export default function App() {
                 Found {result.loans.length} active loan position(s)
               </p>
               <p className="text-[0.79rem] text-[#9fb1c7]">
-                Last updated: {new Date(result.lastUpdated).toLocaleString()}
+                Last updated: {fmtTimeAgo(result.lastUpdated, now)}
               </p>
             </article>
 
@@ -736,7 +837,8 @@ export default function App() {
                             ? portfolio.averageHealthFactor.toFixed(2)
                             : '∞'
                         }
-                        caption="Arithmetic average across active loans"
+                        valueClassName={portfolioHealthBand.valueClassName}
+                        caption={`Arithmetic average across active loans · ${portfolioHealthBand.guidance}`}
                       />
                       <KpiCard
                         title="Net APY (portfolio)"
@@ -1080,11 +1182,21 @@ function ChecklistItem({ title, detail, ok }: { title: string; detail: string; o
   );
 }
 
-function KpiCard({ title, value, caption }: { title: string; value: string; caption: string }) {
+function KpiCard({
+  title,
+  value,
+  caption,
+  valueClassName,
+}: {
+  title: string;
+  value: string;
+  caption: string;
+  valueClassName?: string;
+}) {
   return (
     <article className="rounded-[14px] border border-[rgba(168,191,217,0.18)] bg-[rgba(14,25,39,0.6)] p-3">
       <p className="text-[0.79rem] text-[#9fb1c7]">{title}</p>
-      <p className="my-1 text-[1.7rem] font-semibold">{value}</p>
+      <p className={`my-1 text-[1.7rem] font-semibold ${valueClassName ?? ''}`}>{value}</p>
       <p className="text-[0.79rem] text-[#9fb1c7]">{caption}</p>
     </article>
   );

@@ -13,11 +13,18 @@ A React + Vite dashboard that auto-loads Aave loan positions from a wallet addre
 
 - Wallet-only input UX.
 - Optional query-string wallet input (`wallet`, `address`, or `walletAddress`) with auto-fetch on load when valid.
+- Manual `Refresh` button to reload the current dashboard data on demand.
+- Automatic refresh every 120 seconds after a wallet is loaded.
 - Multi-market support:
   - `proto_mainnet_v3`
   - `proto_lido_v3`
 - Tabs for multiple loans/borrowed assets.
 - Top-level portfolio metrics across all active loans (average health factor, weighted APYs, total debt/collateral/net worth).
+- Portfolio average HF color bands:
+  - `HF > 2.2`: normal operation (green)
+  - `HF 1.8–2.2`: no new leverage, monitor closely
+  - `HF 1.5–1.8`: top up collateral or reduce debt
+  - `HF < 1.5`: mandatory deleveraging (red)
 - Auto-fetched collateral/borrow amounts and market metadata.
 - Price enrichment with CoinGecko.
 - Dashboard analytics:
