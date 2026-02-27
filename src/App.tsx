@@ -551,6 +551,43 @@ export default function App() {
 
   const computed = useMemo(() => computeLoanMetrics(selectedLoan), [selectedLoan]);
   const status = healthLabel(computed.healthFactor);
+  const portfolio = useMemo(() => {
+    if (!result || result.loans.length === 0) return null;
+
+    const metrics = result.loans.map((loan) => computeLoanMetrics(loan));
+    const totalDebt = metrics.reduce((sum, item) => sum + item.debt, 0);
+    const totalCollateral = metrics.reduce((sum, item) => sum + item.collateralUSD, 0);
+    const totalNetWorth = metrics.reduce((sum, item) => sum + item.equity, 0);
+    const totalSupplyEarn = metrics.reduce((sum, item) => sum + item.supplyEarnUSD, 0);
+    const totalBorrowCost = metrics.reduce((sum, item) => sum + item.borrowCostUSD, 0);
+    const totalDeployEarn = metrics.reduce((sum, item) => sum + item.deployEarnUSD, 0);
+    const totalNetEarn = metrics.reduce((sum, item) => sum + item.netEarnUSD, 0);
+    const totalMaxBorrow = metrics.reduce((sum, item) => sum + item.maxBorrowByLTV, 0);
+
+    const finiteHealthFactors = metrics
+      .map((item) => item.healthFactor)
+      .filter((item) => Number.isFinite(item));
+    const averageHealthFactor =
+      finiteHealthFactors.length > 0
+        ? finiteHealthFactors.reduce((sum, item) => sum + item, 0) / finiteHealthFactors.length
+        : Infinity;
+
+    return {
+      loanCount: metrics.length,
+      totalDebt,
+      totalCollateral,
+      totalNetWorth,
+      totalSupplyEarn,
+      totalBorrowCost,
+      totalDeployEarn,
+      totalNetEarn,
+      averageHealthFactor,
+      averageSupplyApy: totalCollateral > 0 ? totalSupplyEarn / totalCollateral : 0,
+      averageBorrowApy: totalDebt > 0 ? totalBorrowCost / totalDebt : 0,
+      portfolioNetApy: totalNetWorth > 0 ? totalNetEarn / totalNetWorth : 0,
+      borrowPowerUsed: totalMaxBorrow > 0 ? totalDebt / totalMaxBorrow : 0,
+    };
+  }, [result]);
 
   const fetchLoans = async (normalizedWallet: string) => {
     setError('');
@@ -669,6 +706,67 @@ export default function App() {
 
             {result.loans.length > 0 ? (
               <>
+                {portfolio ? (
+                  <Card className="mt-4">
+                    <CardHeader>
+                      <h2 className="inline-flex items-center gap-2 text-base">
+                        Portfolio Metrics <Info size={16} />
+                      </h2>
+                    </CardHeader>
+                    <CardContent className="grid-cols-3 max-[980px]:grid-cols-1">
+                      <KpiCard
+                        title="Active loans"
+                        value={String(portfolio.loanCount)}
+                        caption="Detected borrowed positions"
+                      />
+                      <KpiCard
+                        title="Total debt"
+                        value={fmtUSD(portfolio.totalDebt, 0)}
+                        caption="Combined across all active loans"
+                      />
+                      <KpiCard
+                        title="Total net worth"
+                        value={fmtUSD(portfolio.totalNetWorth, 0)}
+                        caption="Collateral − Debt"
+                      />
+                      <KpiCard
+                        title="Average health factor"
+                        value={
+                          Number.isFinite(portfolio.averageHealthFactor)
+                            ? portfolio.averageHealthFactor.toFixed(2)
+                            : '∞'
+                        }
+                        caption="Arithmetic average across active loans"
+                      />
+                      <KpiCard
+                        title="Net APY (portfolio)"
+                        value={fmtPct(portfolio.portfolioNetApy)}
+                        caption="Weighted by net worth"
+                      />
+                      <KpiCard
+                        title="Borrow power used"
+                        value={fmtPct(portfolio.borrowPowerUsed)}
+                        caption="Debt / Max borrow by LTV"
+                      />
+                    </CardContent>
+                    <CardContent>
+                      <Row label="Total collateral" value={fmtUSD(portfolio.totalCollateral, 0)} />
+                      <Row
+                        label="Supply APY (weighted)"
+                        value={fmtPct(portfolio.averageSupplyApy)}
+                      />
+                      <Row
+                        label="Borrow APY (weighted)"
+                        value={fmtPct(portfolio.averageBorrowApy)}
+                      />
+                      <Row
+                        label="Net earnings (annual)"
+                        value={fmtUSD(portfolio.totalNetEarn, 0)}
+                      />
+                    </CardContent>
+                  </Card>
+                ) : null}
+
                 <nav className="mt-3 flex flex-wrap gap-2" aria-label="Loan positions">
                   {result.loans.map((loan, index) => (
                     <Button

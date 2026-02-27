@@ -17,6 +17,7 @@ A React + Vite dashboard that auto-loads Aave loan positions from a wallet addre
   - `proto_mainnet_v3`
   - `proto_lido_v3`
 - Tabs for multiple loans/borrowed assets.
+- Top-level portfolio metrics across all active loans (average health factor, weighted APYs, total debt/collateral/net worth).
 - Auto-fetched collateral/borrow amounts and market metadata.
 - Price enrichment with CoinGecko.
 - Dashboard analytics:
@@ -99,7 +100,8 @@ npm run preview     # preview production build
 2. App queries Aave subgraph data for supported markets.
 3. Reserves are grouped into loan positions per market.
 4. Token prices are fetched from CoinGecko.
-5. Dashboard metrics are computed and rendered per selected loan tab.
+5. Portfolio-level aggregate metrics are computed across all active loans.
+6. Detailed metrics are computed and rendered per selected loan tab.
 
 ## Limitations
 
