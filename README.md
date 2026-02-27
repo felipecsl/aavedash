@@ -90,9 +90,30 @@ Supported query params: `wallet`, `address`, `walletAddress`.
 npm run dev         # start local dev server
 npm run typecheck   # TypeScript checks
 npm run lint        # ESLint
+npm run format      # Prettier format
 npm run build       # production build
 npm run preview     # preview production build
 ```
+
+## GitHub Pages Deployment
+
+This project is configured to deploy automatically to GitHub Pages from `main` using GitHub Actions.
+
+Files involved:
+
+- `.github/workflows/deploy-pages.yml`
+- `vite.config.ts` (uses `VITE_BASE_PATH` so asset URLs work under `/<repo>/`)
+
+Setup steps:
+
+1. Push this repo to GitHub.
+2. In GitHub, open `Settings -> Pages`.
+3. Set `Source` to `GitHub Actions`.
+4. Add repository secrets (if needed) in `Settings -> Secrets and variables -> Actions`:
+   - `VITE_THE_GRAPH_API_KEY` (recommended/usually required)
+   - `VITE_COINGECKO_API_KEY` (optional)
+
+After each push to `main`, the workflow builds the app and publishes `dist` to GitHub Pages.
 
 ## How It Works
 
@@ -108,3 +129,4 @@ npm run preview     # preview production build
 - Liquidation price is shown as a primary-collateral approximation for multi-collateral positions.
 - Coverage depends on the supported market list and indexer availability.
 - Metrics are simplified monitoring estimates, not a substitute for protocol-native risk engines.
+- GitHub Pages deployments require proper repository secrets if API keys are needed at build time.
