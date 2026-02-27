@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { AlertTriangle, Info, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import { Badge, type BadgeVariant } from './components/ui/badge';
+import { Button } from './components/ui/button';
+import { Card, CardContent, CardHeader } from './components/ui/card';
+import { Input } from './components/ui/input';
+import { Separator } from './components/ui/separator';
 
 type BadgeTone = 'neutral' | 'positive' | 'warning' | 'danger';
 
@@ -200,6 +205,13 @@ function healthLabel(hf: number): { label: string; tone: BadgeTone } {
   if (hf < 1.5) return { label: 'Tight', tone: 'warning' };
   if (hf < 2) return { label: 'OK', tone: 'neutral' };
   return { label: 'Safe', tone: 'positive' };
+}
+
+function toBadgeVariant(tone: BadgeTone): BadgeVariant {
+  if (tone === 'positive') return 'positive';
+  if (tone === 'warning') return 'warning';
+  if (tone === 'danger') return 'destructive';
+  return 'default';
 }
 
 async function fetchFromAaveSubgraph(wallet: string): Promise<RawUserReserveWithMarket[]> {
@@ -612,8 +624,8 @@ export default function App() {
               htmlFor="wallet"
             >
               <span className="text-[#afc0d5]">Wallet address</span>
-              <input
-                className="h-9 w-full min-w-0 max-w-[460px] rounded-[10px] border border-[rgba(168,191,217,0.3)] bg-[rgba(4,9,16,0.7)] px-[10px] text-[#e8f2ff] outline-none focus:border-transparent focus:ring-2 focus:ring-[#3f7ad8] max-[980px]:max-w-full"
+              <Input
+                className="max-[980px]:max-w-full"
                 id="wallet"
                 type="text"
                 value={wallet}
@@ -624,14 +636,14 @@ export default function App() {
               />
             </label>
 
-            <button
-              className="inline-flex h-[38px] items-center gap-2 rounded-[10px] border border-[rgba(168,191,217,0.35)] bg-[linear-gradient(135deg,#2f5eab,#2b4270)] px-[14px] font-semibold text-[#eff6ff] enabled:cursor-pointer disabled:cursor-progress disabled:opacity-80 max-[980px]:w-full max-[980px]:max-w-full"
+            <Button
+              className="max-[980px]:w-full max-[980px]:max-w-full"
               type="submit"
               disabled={isLoading}
             >
               {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Wallet size={16} />}
               {isLoading ? 'Fetching loans...' : 'Fetch loans'}
-            </button>
+            </Button>
           </form>
 
           {error ? (
@@ -659,18 +671,20 @@ export default function App() {
               <>
                 <nav className="mt-3 flex flex-wrap gap-2" aria-label="Loan positions">
                   {result.loans.map((loan, index) => (
-                    <button
+                    <Button
                       key={loan.id}
                       type="button"
-                      className={`h-9 cursor-pointer rounded-[10px] border px-3 text-[#d9e6f7] ${
+                      variant="secondary"
+                      size="sm"
+                      className={`${
                         loan.id === selectedLoan?.id
                           ? 'border-[rgba(200,222,247,0.6)] bg-[linear-gradient(135deg,#355f9e,#24436f)]'
-                          : 'border-[rgba(168,191,217,0.35)] bg-[rgba(8,18,30,0.82)]'
+                          : ''
                       }`}
                       onClick={() => setSelectedLoanId(loan.id)}
                     >
                       Loan {index + 1}: {loan.marketName} · {loan.borrowed.symbol}
-                    </button>
+                    </Button>
                   ))}
                 </nav>
 
@@ -681,14 +695,14 @@ export default function App() {
                         Position Snapshot <Info size={16} />
                       </h2>
                     </CardHeader>
-                    <CardBody>
+                    <CardContent>
                       <StaticField
                         label="Borrowed asset"
                         value={`${fmtAmount(selectedLoan?.borrowed.amount ?? 0)} ${selectedLoan?.borrowed.symbol ?? ''}`}
                       />
                       <StaticField label="Market" value={selectedLoan?.marketName ?? '—'} />
                       <StaticField label="Debt (USD)" value={fmtUSD(computed.debt, 0)} />
-                      <Divider />
+                      <Separator />
 
                       <div className="grid min-w-0 gap-[5px] text-[0.84rem]">
                         <span className="text-[#afc0d5]">Supplied collateral assets</span>
@@ -711,7 +725,7 @@ export default function App() {
                         label="Collateral value (USD)"
                         value={fmtUSD(computed.collateralUSD, 0)}
                       />
-                      <Divider />
+                      <Separator />
 
                       <TwoColumn>
                         <StaticField label="Max LTV (weighted)" value={fmtPct(computed.ltvMax)} />
@@ -721,7 +735,7 @@ export default function App() {
                         />
                       </TwoColumn>
 
-                      <Divider />
+                      <Separator />
 
                       <TwoColumn>
                         <StaticField
@@ -736,7 +750,7 @@ export default function App() {
                         value={fmtPct(computed.rDeploy)}
                         hint="Set from your strategy outside this dashboard."
                       />
-                    </CardBody>
+                    </CardContent>
                   </Card>
 
                   <div className="grid gap-4">
@@ -744,7 +758,7 @@ export default function App() {
                       <CardHeader>
                         <h2 className="inline-flex items-center gap-2 text-base">
                           Status
-                          <Badge tone={status.tone}>{status.label}</Badge>
+                          <Badge variant={toBadgeVariant(status.tone)}>{status.label}</Badge>
                           {computed.healthFactor < 1.5 ? (
                             <AlertTriangle size={16} />
                           ) : (
@@ -752,7 +766,7 @@ export default function App() {
                           )}
                         </h2>
                       </CardHeader>
-                      <CardBody className="grid-cols-3 max-[980px]:grid-cols-1">
+                      <CardContent className="grid-cols-3 max-[980px]:grid-cols-1">
                         <KpiCard
                           title="Health Factor (HF)"
                           value={
@@ -774,7 +788,7 @@ export default function App() {
                           value={fmtUSD(computed.equity, 0)}
                           caption="Collateral − Debt"
                         />
-                      </CardBody>
+                      </CardContent>
                     </Card>
 
                     <div className="grid grid-cols-2 gap-4 max-[980px]:grid-cols-1">
@@ -782,7 +796,7 @@ export default function App() {
                         <CardHeader>
                           <h2 className="inline-flex items-center gap-2 text-base">Main Metrics</h2>
                         </CardHeader>
-                        <CardBody>
+                        <CardContent>
                           <Row label="Collateral value" value={fmtUSD(computed.collateralUSD, 0)} />
                           <Row label="Debt" value={fmtUSD(computed.debt, 0)} />
                           <Row label="LTV" value={fmtPct(computed.ltv)} />
@@ -796,14 +810,14 @@ export default function App() {
                           />
                           <Row label="Borrow power used" value={fmtPct(computed.borrowPowerUsed)} />
                           <Row label="Borrow headroom" value={fmtUSD(computed.borrowHeadroom, 0)} />
-                          <Divider />
+                          <Separator />
                           <Row label="Liquidation threshold" value={fmtPct(computed.lt)} />
                           <Row label="LTV at liquidation" value={fmtPct(computed.ltvAtLiq)} />
                           <Row
                             label="Collateral buffer"
                             value={fmtUSD(computed.collateralBufferUSD, 0)}
                           />
-                        </CardBody>
+                        </CardContent>
                       </Card>
 
                       <Card>
@@ -812,11 +826,11 @@ export default function App() {
                             Carry / Net APY
                           </h2>
                         </CardHeader>
-                        <CardBody>
+                        <CardContent>
                           <Row label="Supply APY" value={fmtPct(computed.rSupply)} />
                           <Row label="Borrow APY" value={fmtPct(computed.rBorrow)} />
                           <Row label="Deploy APY (optional)" value={fmtPct(computed.rDeploy)} />
-                          <Divider />
+                          <Separator />
                           <Row
                             label="Supply earnings (annual)"
                             value={fmtUSD(computed.supplyEarnUSD, 0)}
@@ -829,7 +843,7 @@ export default function App() {
                             label="Deploy earnings (annual)"
                             value={fmtUSD(computed.deployEarnUSD, 0)}
                           />
-                          <Divider />
+                          <Separator />
                           <Row
                             label="Net earnings (annual)"
                             value={fmtUSD(computed.netEarnUSD, 0)}
@@ -841,7 +855,7 @@ export default function App() {
                           <p className="text-[0.79rem] text-[#9fb1c7]">
                             Net APY is ROE: (supply + deploy − borrow) / equity.
                           </p>
-                        </CardBody>
+                        </CardContent>
                       </Card>
                     </div>
 
@@ -851,7 +865,7 @@ export default function App() {
                           Monitoring Checklist
                         </h2>
                       </CardHeader>
-                      <CardBody className="grid-cols-3 max-[980px]:grid-cols-1">
+                      <CardContent className="grid-cols-3 max-[980px]:grid-cols-1">
                         <ChecklistItem
                           title="Health Factor"
                           ok={!computed.alertHF}
@@ -882,14 +896,14 @@ export default function App() {
                           ok
                           detail="Consider alerts (HF, price, LTV) and an emergency delever playbook."
                         />
-                      </CardBody>
+                      </CardContent>
                     </Card>
 
                     <Card>
                       <CardHeader>
                         <h2 className="inline-flex items-center gap-2 text-base">Sensitivity</h2>
                       </CardHeader>
-                      <CardBody className="grid-cols-3 max-[980px]:grid-cols-1">
+                      <CardContent className="grid-cols-3 max-[980px]:grid-cols-1">
                         <KpiCard
                           title="Equity move for ±10% price"
                           value={
@@ -909,7 +923,7 @@ export default function App() {
                           value={fmtUSD(computed.collateralUSDAtLiq, 0)}
                           caption="= Debt / liquidation threshold"
                         />
-                      </CardBody>
+                      </CardContent>
                     </Card>
                   </div>
                 </section>
@@ -933,48 +947,8 @@ export default function App() {
   );
 }
 
-function Card({ children }: { children: ReactNode }) {
-  return (
-    <section className="rounded-[18px] border border-[rgba(168,191,217,0.22)] bg-[linear-gradient(140deg,rgba(11,24,39,0.82),rgba(9,16,28,0.6))] backdrop-blur-[8px]">
-      {children}
-    </section>
-  );
-}
-
-function CardHeader({ children }: { children: ReactNode }) {
-  return <header className="px-[18px] pt-[18px]">{children}</header>;
-}
-
-function CardBody({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={`grid gap-3 px-[18px] pt-[14px] pb-[18px] ${className ?? ''}`.trim()}>
-      {children}
-    </div>
-  );
-}
-
-function Divider() {
-  return <hr className="my-0.5 h-px w-full border-0 bg-[rgba(168,191,217,0.2)]" />;
-}
-
 function TwoColumn({ children }: { children: ReactNode }) {
   return <div className="grid grid-cols-2 gap-3">{children}</div>;
-}
-
-function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: BadgeTone }) {
-  const toneClass =
-    tone === 'positive'
-      ? 'bg-green-600 text-green-50'
-      : tone === 'warning'
-        ? 'bg-amber-600 text-amber-50'
-        : tone === 'danger'
-          ? 'bg-red-600 text-red-50'
-          : 'bg-slate-600 text-slate-50';
-  return (
-    <span className={`rounded-full px-2 py-[3px] text-[0.72rem] font-bold uppercase ${toneClass}`}>
-      {children}
-    </span>
-  );
 }
 
 function StaticField({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -1001,7 +975,7 @@ function ChecklistItem({ title, detail, ok }: { title: string; detail: string; o
     <article className="rounded-[14px] border border-[rgba(168,191,217,0.18)] bg-[rgba(14,25,39,0.6)] p-3">
       <div className="flex items-center justify-between gap-[10px]">
         <h3 className="text-[0.94rem]">{title}</h3>
-        <Badge tone={ok ? 'positive' : 'danger'}>{ok ? 'OK' : 'Watch'}</Badge>
+        <Badge variant={ok ? 'positive' : 'destructive'}>{ok ? 'OK' : 'Watch'}</Badge>
       </div>
       <p className="text-[0.79rem] text-[#9fb1c7]">{detail}</p>
     </article>

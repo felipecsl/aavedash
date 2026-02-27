@@ -32,6 +32,7 @@ A React + Vite dashboard that auto-loads Aave loan positions from a wallet addre
 - TypeScript
 - Vite
 - Tailwind CSS
+- shadcn/ui-style components
 - Lucide icons
 
 ## Requirements
