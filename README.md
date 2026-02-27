@@ -31,6 +31,7 @@ A React + Vite dashboard that auto-loads Aave loan positions from a wallet addre
 - React 19
 - TypeScript
 - Vite
+- Tailwind CSS
 - Lucide icons
 
 ## Requirements
@@ -51,6 +52,7 @@ VITE_COINGECKO_API_KEY=your_coingecko_demo_api_key
 ```
 
 Notes:
+
 - Without `VITE_THE_GRAPH_API_KEY`, some markets may fail to load depending on endpoint availability.
 - CoinGecko pricing still works without `VITE_COINGECKO_API_KEY`, but may be rate-limited.
 
