@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { AlertTriangle, Info, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
 
 type BadgeTone = 'neutral' | 'positive' | 'warning' | 'danger';
@@ -134,6 +134,11 @@ const USER_RESERVES_QUERY = `
 `;
 
 const ETHEREUM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
+function getWalletFromQueryString(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('wallet') ?? params.get('address') ?? params.get('walletAddress') ?? '';
+}
 
 function n(value: string | number): number {
   const parsed = typeof value === 'number' ? value : Number(value.replaceAll(',', ''));
@@ -506,34 +511,26 @@ function computeLoanMetrics(loan: LoanPosition | null): Computed {
 }
 
 export default function App() {
-  const [wallet, setWallet] = useState('');
+  const [wallet, setWallet] = useState(() => getWalletFromQueryString());
   const [selectedLoanId, setSelectedLoanId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [result, setResult] = useState<FetchState | null>(null);
+  const hasAutoFetchedFromQuery = useRef(false);
 
   const selectedLoan = useMemo(() => {
     if (!result || result.loans.length === 0) return null;
-    return result.loans.find((loan) => loan.id === selectedLoanId) ?? result.loans[0];
+    return result.loans.find((loan) => loan.id === selectedLoanId) ?? result.loans[0] ?? null;
   }, [result, selectedLoanId]);
 
   const computed = useMemo(() => computeLoanMetrics(selectedLoan), [selectedLoan]);
   const status = healthLabel(computed.healthFactor);
 
-  const handleFetch = async (event: FormEvent) => {
-    event.preventDefault();
-
-    if (!ETHEREUM_ADDRESS_REGEX.test(wallet.trim())) {
-      setError('Please enter a valid Ethereum wallet address.');
-      setResult(null);
-      return;
-    }
-
+  const fetchLoans = async (normalizedWallet: string) => {
     setError('');
     setIsLoading(true);
 
     try {
-      const normalizedWallet = wallet.trim();
       const reserves = await fetchFromAaveSubgraph(normalizedWallet);
       const reserveSymbols = Array.from(new Set(reserves.map((entry) => entry.reserve.symbol)));
       const prices = await fetchUsdPrices(reserveSymbols);
@@ -552,6 +549,29 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (hasAutoFetchedFromQuery.current) return;
+    const walletFromQuery = getWalletFromQueryString().trim();
+
+    if (!ETHEREUM_ADDRESS_REGEX.test(walletFromQuery)) return;
+
+    hasAutoFetchedFromQuery.current = true;
+    void fetchLoans(walletFromQuery);
+  }, []);
+
+  const handleFetch = async (event: FormEvent) => {
+    event.preventDefault();
+
+    const normalizedWallet = wallet.trim();
+    if (!ETHEREUM_ADDRESS_REGEX.test(normalizedWallet)) {
+      setError('Please enter a valid Ethereum wallet address.');
+      setResult(null);
+      return;
+    }
+
+    await fetchLoans(normalizedWallet);
   };
 
   return (
