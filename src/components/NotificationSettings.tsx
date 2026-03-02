@@ -298,11 +298,17 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
                           step="0.05"
                           value={zone.minHF}
                           onChange={(e) => {
+                            const value = Number(e.target.value);
                             const zones = [...config.zones];
-                            zones[i] = { ...zone, minHF: Number(e.target.value) };
+                            zones[i] = { ...zone, minHF: value };
                             setConfig({ ...config, zones });
                           }}
-                          onBlur={() => void saveConfig(config)}
+                          onBlur={(e) => {
+                            const value = Number(e.target.value);
+                            const zones = [...config.zones];
+                            zones[i] = { ...zone, minHF: value };
+                            void saveConfig({ ...config, zones });
+                          }}
                           className="w-[80px]"
                         />
                         <span className="text-[#9fb1c7]">to</span>
