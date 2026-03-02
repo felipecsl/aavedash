@@ -3,3 +3,5 @@ dist
 .vite
 *.tsbuildinfo
 .env
+packages/server/data/
+packages/server/.env

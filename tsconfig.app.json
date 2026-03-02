@@ -16,7 +16,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
+    "paths": {
+      "@aave-monitor/core": ["./packages/aave-core/src/index.ts"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "packages/aave-core/src"]
 }
