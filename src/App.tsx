@@ -97,6 +97,9 @@ type Computed = {
 
 const GRAPH_API_KEY = import.meta.env.VITE_THE_GRAPH_API_KEY as string | undefined;
 const COINGECKO_API_KEY = import.meta.env.VITE_COINGECKO_API_KEY as string | undefined;
+const DEFAULT_R_DEPLOY = 0.1125;
+const R_DEPLOY_ENV = import.meta.env.VITE_R_DEPLOY as string | undefined;
+const R_DEPLOY = parseDeployRate(R_DEPLOY_ENV);
 const UPDATE_RATE_MS = 120_000;
 
 const AAVE_MARKETS = [
@@ -162,6 +165,12 @@ function n(value: string | number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function parseDeployRate(value: string | undefined): number {
+  if (!value) return DEFAULT_R_DEPLOY;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_R_DEPLOY;
 }
 
 function fmtUSD(value: number, digits = 0): string {
@@ -511,7 +520,7 @@ function computeLoanMetrics(loan: LoanPosition | null): Computed {
   const lt = weightedAverage(loan.supplied, (asset) => asset.liqThreshold);
   const rSupply = weightedAverage(loan.supplied, (asset) => asset.supplyRate);
   const rBorrow = loan.borrowed.borrowRate;
-  const rDeploy = 0;
+  const rDeploy = R_DEPLOY;
 
   const ltv = collateralUSD > 0 ? debt / collateralUSD : 0;
   const leverage = equity > 0 ? collateralUSD / equity : Infinity;
@@ -537,7 +546,7 @@ function computeLoanMetrics(loan: LoanPosition | null): Computed {
   const borrowCostUSD = debt * rBorrow;
   const deployEarnUSD = debt * rDeploy;
 
-  const netEarnUSD = supplyEarnUSD + deployEarnUSD - borrowCostUSD;
+  const netEarnUSD = supplyEarnUSD - borrowCostUSD;
   const netAPYOnEquity = equity > 0 ? netEarnUSD / equity : 0;
 
   const maxBorrowByLTV = collateralUSD * ltvMax;
@@ -843,6 +852,13 @@ export default function App() {
                       <KpiCard
                         title="Net APY (portfolio)"
                         value={fmtPct(portfolio.portfolioNetApy)}
+                        valueClassName={
+                          portfolio.portfolioNetApy >= 0
+                            ? 'text-green-400'
+                            : portfolio.portfolioNetApy > -0.03
+                              ? 'text-yellow-400'
+                              : 'text-red-400'
+                        }
                         caption="Weighted by net worth"
                       />
                       <KpiCard
@@ -864,6 +880,10 @@ export default function App() {
                       <Row
                         label="Net earnings (annual)"
                         value={fmtUSD(portfolio.totalNetEarn, 0)}
+                      />
+                      <Row
+                        label="Debt deploy earnings est. (yearly)"
+                        value={fmtUSD(portfolio.totalDeployEarn, 0)}
                       />
                     </CardContent>
                   </Card>
@@ -1049,11 +1069,18 @@ export default function App() {
                             value={fmtUSD(computed.netEarnUSD, 0)}
                           />
                           <Row
+                            label="Debt deploy earnings est. (yearly)"
+                            value={fmtUSD(computed.deployEarnUSD, 0)}
+                          />
+                          <Row
                             label="Net APY (on equity)"
                             value={fmtPct(computed.netAPYOnEquity)}
                           />
                           <p className="text-[0.79rem] text-[#9fb1c7]">
-                            Net APY is ROE: (supply + deploy − borrow) / equity.
+                            Net APY is ROE: (supply − borrow) / equity.
+                          </p>
+                          <p className="text-[0.79rem] text-[#9fb1c7]">
+                            Debt deploy estimate assumes 100% of debt earns deploy APY.
                           </p>
                         </CardContent>
                       </Card>

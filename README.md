@@ -58,12 +58,16 @@ VITE_THE_GRAPH_API_KEY=your_the_graph_api_key
 
 # Optional but recommended to avoid CoinGecko rate limits
 VITE_COINGECKO_API_KEY=your_coingecko_demo_api_key
+
+# Optional deploy APY used in carry calculations (decimal form, default: 0.1125)
+VITE_R_DEPLOY=0.1125
 ```
 
 Notes:
 
 - Without `VITE_THE_GRAPH_API_KEY`, some markets may fail to load depending on endpoint availability.
 - CoinGecko pricing still works without `VITE_COINGECKO_API_KEY`, but may be rate-limited.
+- `VITE_R_DEPLOY` must be a non-negative decimal rate (for example, `0.1125` for 11.25%).
 
 ## Getting Started
 
