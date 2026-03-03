@@ -172,12 +172,78 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });
 
+// --- Telegram bot commands ---
+
+function formatStatusMessage(status: ReturnType<typeof monitor.getStatus>): string {
+  if (!status.running) {
+    return 'Monitor is not running.';
+  }
+
+  if (status.states.length === 0) {
+    const lastPoll = status.lastPollAt
+      ? `\nLast poll: ${new Date(status.lastPollAt).toLocaleString()}`
+      : '';
+    return `No active loan positions found.${lastPoll}`;
+  }
+
+  const lines: string[] = ['<b>Loan Status</b>', ''];
+
+  for (const state of status.states) {
+    const addr = `${state.wallet.slice(0, 6)}...${state.wallet.slice(-4)}`;
+    const hf = Number.isFinite(state.healthFactor) ? state.healthFactor.toFixed(2) : '∞';
+    lines.push(
+      `${state.currentZone.emoji} <code>${addr}</code> · ${state.loanId}`,
+      `   HF: <b>${hf}</b> · Zone: ${state.currentZone.label}`,
+      '',
+    );
+  }
+
+  if (status.lastPollAt) {
+    lines.push(`Last updated: ${new Date(status.lastPollAt).toLocaleString()}`);
+  }
+  if (status.lastError) {
+    lines.push(`Last error: ${status.lastError}`);
+  }
+
+  return lines.join('\n');
+}
+
+telegram.onCommand('status', async (chatId) => {
+  const status = monitor.getStatus();
+  await telegram.sendMessage(chatId, formatStatusMessage(status));
+});
+
+telegram.onCommand('refresh', async (chatId) => {
+  await telegram.sendMessage(chatId, 'Refreshing loan data...');
+  try {
+    const status = await monitor.refreshState();
+    await telegram.sendMessage(chatId, formatStatusMessage(status));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    await telegram.sendMessage(chatId, `Refresh failed: ${message}`);
+  }
+});
+
+telegram.onCommand('help', async (chatId) => {
+  await telegram.sendMessage(
+    chatId,
+    [
+      '<b>Aave Loan Monitor</b>',
+      '',
+      '/status — Show current loan positions and health factors',
+      '/refresh — Force-refresh data and show updated status',
+      '/help — Show this help message',
+    ].join('\n'),
+  );
+});
+
 app.listen(PORT, () => {
   console.log(`Aave monitor server listening on port ${PORT}`);
 
   const config = storage.get();
   if (config.telegram.enabled && config.telegram.chatId && TELEGRAM_BOT_TOKEN) {
     monitor.start();
+    telegram.startCommandPolling();
   } else {
     console.log('Monitor not started: telegram not configured or enabled');
   }
