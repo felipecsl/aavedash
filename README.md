@@ -101,7 +101,7 @@ Supported query params: `wallet`, `address`, `walletAddress`.
 yarn dev           # start frontend dev server
 yarn dev:server    # start backend monitor server
 yarn dev:all       # start both frontend and server
-yarn typecheck     # TypeScript checks
+yarn typecheck     # TypeScript checks (frontend + core package + server package)
 yarn lint          # ESLint
 yarn format        # Prettier format
 yarn build         # production frontend build

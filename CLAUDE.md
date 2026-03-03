@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev         # start Vite dev server (localhost:5173)
 npm run build       # tsc -b && vite build (production)
 npm run preview     # preview production build
-npm run typecheck   # tsc --noEmit
+npm run typecheck   # frontend + backend workspace TypeScript checks
 npm run lint        # eslint
 npm run format      # prettier --write
 npm run format:check # prettier --check

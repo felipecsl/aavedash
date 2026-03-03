@@ -9,6 +9,7 @@ import {
   buildLoanPositions,
   computeLoanMetrics,
   DEFAULT_R_DEPLOY,
+  DEFAULT_ZONES,
 } from '@aave-monitor/core';
 import type { AlertConfig } from './storage.js';
 import type { TelegramClient } from './telegram.js';

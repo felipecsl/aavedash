@@ -40,6 +40,9 @@ function parseConfigBody(body: unknown): { data: Partial<AlertConfig> } | { erro
   const result = partialAlertConfigSchema.safeParse(body);
   if (!result.success) {
     const issue = result.error.issues[0];
+    if (!issue) {
+      return { error: 'Invalid request body' };
+    }
     const path = issue.path.join('.');
     const message = path ? `${path}: ${issue.message}` : issue.message;
     return { error: message };
