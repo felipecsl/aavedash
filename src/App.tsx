@@ -359,6 +359,16 @@ export default function App() {
                         caption="Collateral − Debt"
                       />
                       <KpiCard
+                        title="Total collateral"
+                        value={fmtUSD(portfolio.totalCollateral, 0)}
+                        caption="Combined supplied collateral across all loans"
+                      />
+                      <KpiCard
+                        title="Net earnings (annual)"
+                        value={fmtUSD(portfolio.totalNetEarn, 0)}
+                        caption="Estimated yearly carry across the portfolio"
+                      />
+                      <KpiCard
                         title="Average health factor"
                         value={
                           Number.isFinite(portfolio.averageHealthFactor)
@@ -399,7 +409,6 @@ export default function App() {
                       />
                     </CardContent>
                     <CardContent>
-                      <Row label="Total collateral" value={fmtUSD(portfolio.totalCollateral, 0)} />
                       <Row
                         label="Supply APY (weighted)"
                         value={fmtPct(portfolio.averageSupplyApy)}
@@ -407,10 +416,6 @@ export default function App() {
                       <Row
                         label="Borrow APY (weighted)"
                         value={fmtPct(portfolio.averageBorrowApy)}
-                      />
-                      <Row
-                        label="Net earnings (annual)"
-                        value={fmtUSD(portfolio.totalNetEarn, 0)}
                       />
                       <Row
                         label="Debt deploy earnings est. (yearly)"

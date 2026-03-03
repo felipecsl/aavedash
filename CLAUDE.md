@@ -14,7 +14,8 @@ npm run format      # prettier --write
 npm run format:check # prettier --check
 ```
 
-Always run `typecheck`, `lint`, and `format` before finishing changes.
+Always run `typecheck`, `lint`, and `format` before finishing changes. Also make sure you check
+instructions in AGENTS.md if you haven't already.
 
 ## Environment Variables
 
