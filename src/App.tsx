@@ -14,163 +14,32 @@ import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader } from './components/ui/card';
 import { Input } from './components/ui/input';
 import { Separator } from './components/ui/separator';
-
-type BadgeTone = 'neutral' | 'positive' | 'warning' | 'danger';
-
-type RawUserReserve = {
-  currentATokenBalance: string;
-  currentTotalDebt: string;
-  usageAsCollateralEnabledOnUser: boolean;
-  reserve: {
-    symbol: string;
-    decimals: number;
-    underlyingAsset: string;
-    baseLTVasCollateral: string;
-    reserveLiquidationThreshold: string;
-    liquidityRate: string;
-    variableBorrowRate: string;
-  };
-};
-
-type AssetPosition = {
-  symbol: string;
-  address: string;
-  amount: number;
-  usdPrice: number;
-  usdValue: number;
-  collateralEnabled: boolean;
-  maxLTV: number;
-  liqThreshold: number;
-  supplyRate: number;
-  borrowRate: number;
-};
-
-type LoanPosition = {
-  id: string;
-  marketName: string;
-  borrowed: AssetPosition;
-  supplied: AssetPosition[];
-  totalSuppliedUsd: number;
-  totalBorrowedUsd: number;
-};
-
-type RawUserReserveWithMarket = RawUserReserve & { __marketName: string };
-
-type FetchState = {
-  wallet: string;
-  loans: LoanPosition[];
-  lastUpdated: string;
-};
-
-type Computed = {
-  units: number;
-  px: number;
-  debt: number;
-  collateralUSD: number;
-  equity: number;
-  ltv: number;
-  leverage: number;
-  healthFactor: number;
-  liqPrice: number;
-  collateralUSDAtLiq: number;
-  ltvAtLiq: number;
-  priceDropToLiq: number;
-  supplyEarnUSD: number;
-  borrowCostUSD: number;
-  deployEarnUSD: number;
-  netEarnUSD: number;
-  netAPYOnEquity: number;
-  maxBorrowByLTV: number;
-  borrowHeadroom: number;
-  borrowPowerUsed: number;
-  equityMoveFor10Pct: number;
-  collateralBufferUSD: number;
-  alertHF: boolean;
-  alertLTV: boolean;
-  ltvMax: number;
-  lt: number;
-  rSupply: number;
-  rBorrow: number;
-  rDeploy: number;
-  primaryCollateralSymbol: string;
-};
+import {
+  type BadgeTone,
+  type FetchState,
+  type LoanPosition,
+  ETHEREUM_ADDRESS_REGEX,
+  DEFAULT_R_DEPLOY,
+  clamp,
+  computeLoanMetrics,
+  healthLabel,
+  portfolioHealthFactorBand,
+  parseDeployRate,
+  fetchFromAaveSubgraph,
+  fetchUsdPrices,
+  buildLoanPositions,
+} from '@aave-monitor/core';
+import { NotificationBell } from './components/NotificationSettings';
 
 const GRAPH_API_KEY = import.meta.env.VITE_THE_GRAPH_API_KEY as string | undefined;
 const COINGECKO_API_KEY = import.meta.env.VITE_COINGECKO_API_KEY as string | undefined;
-const DEFAULT_R_DEPLOY = 0.1125;
 const R_DEPLOY_ENV = import.meta.env.VITE_R_DEPLOY as string | undefined;
-const R_DEPLOY = parseDeployRate(R_DEPLOY_ENV);
+const R_DEPLOY = parseDeployRate(R_DEPLOY_ENV, DEFAULT_R_DEPLOY);
 const UPDATE_RATE_MS = 120_000;
-
-const AAVE_MARKETS = [
-  {
-    marketName: 'proto_mainnet_v3',
-    graphSubgraphId: 'Cd2gEDVeqnjBn1hSeqFMitw8Q1iiyV9FYUZkLNRcL87g',
-    fallbackEndpoints: ['https://api.thegraph.com/subgraphs/name/aave/protocol-v3'],
-  },
-  {
-    marketName: 'proto_lido_v3',
-    graphSubgraphId: '5vxMbXRhG1oQr55MWC5j6qg78waWujx1wjeuEWDA6j3',
-    fallbackEndpoints: [],
-  },
-] as const;
-
-const COINGECKO_IDS_BY_SYMBOL: Record<string, string> = {
-  ETH: 'ethereum',
-  WETH: 'weth',
-  WBTC: 'wrapped-bitcoin',
-  USDC: 'usd-coin',
-  USDT: 'tether',
-  DAI: 'dai',
-  LDO: 'lido-dao',
-  LINK: 'chainlink',
-  AAVE: 'aave',
-  CRV: 'curve-dao-token',
-  MKR: 'maker',
-  UNI: 'uniswap',
-  SNX: 'havven',
-  BAL: 'balancer',
-};
-
-const USER_RESERVES_QUERY = `
-  query UserReserves($user: String!) {
-    userReserves(first: 200, where: { user: $user }) {
-      currentATokenBalance
-      currentTotalDebt
-      usageAsCollateralEnabledOnUser
-      reserve {
-        symbol
-        decimals
-        underlyingAsset
-        baseLTVasCollateral
-        reserveLiquidationThreshold
-        liquidityRate
-        variableBorrowRate
-      }
-    }
-  }
-`;
-
-const ETHEREUM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
 function getWalletFromQueryString(): string {
   const params = new URLSearchParams(window.location.search);
   return params.get('wallet') ?? params.get('address') ?? params.get('walletAddress') ?? '';
-}
-
-function n(value: string | number): number {
-  const parsed = typeof value === 'number' ? value : Number(value.replaceAll(',', ''));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function parseDeployRate(value: string | undefined): number {
-  if (!value) return DEFAULT_R_DEPLOY;
-  const parsed = Number(value.trim());
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_R_DEPLOY;
 }
 
 function fmtUSD(value: number, digits = 0): string {
@@ -201,396 +70,11 @@ function fmtTimeAgo(value: string, now: number): string {
   return formatDistance(date, new Date(now), { addSuffix: true });
 }
 
-function parseBalance(raw: string, decimals: number): number {
-  const normalized = Number(raw) / 10 ** decimals;
-  return Number.isFinite(normalized) ? normalized : 0;
-}
-
-function fromBps(raw: string): number {
-  return clamp(n(raw) / 10_000, 0, 0.99);
-}
-
-function fromRay(raw: string): number {
-  return Math.max(0, n(raw) / 10 ** 27);
-}
-
-function weightedAverage(
-  items: AssetPosition[],
-  valueSelector: (item: AssetPosition) => number,
-): number {
-  const totalWeight = items.reduce((sum, item) => sum + item.usdValue, 0);
-  if (totalWeight <= 0) return 0;
-
-  const weighted = items.reduce((sum, item) => sum + valueSelector(item) * item.usdValue, 0);
-  return weighted / totalWeight;
-}
-
-function healthLabel(hf: number): { label: string; tone: BadgeTone } {
-  if (!Number.isFinite(hf) || hf <= 0) return { label: 'Invalid', tone: 'danger' };
-  if (hf < 1.1) return { label: 'Danger', tone: 'danger' };
-  if (hf < 1.5) return { label: 'Tight', tone: 'warning' };
-  if (hf < 2) return { label: 'OK', tone: 'neutral' };
-  return { label: 'Safe', tone: 'positive' };
-}
-
-function portfolioHealthFactorBand(hf: number): { guidance: string; valueClassName: string } {
-  if (!Number.isFinite(hf) || hf <= 0) {
-    return {
-      guidance: 'Invalid reading',
-      valueClassName: 'text-[#ef4444]',
-    };
-  }
-  if (hf < 1.5) {
-    return {
-      guidance: 'Mandatory deleveraging',
-      valueClassName: 'text-[#ef4444]',
-    };
-  }
-  if (hf < 1.8) {
-    return {
-      guidance: 'Top up collateral or reduce debt',
-      valueClassName: 'text-[#f59e0b]',
-    };
-  }
-  if (hf <= 2.2) {
-    return {
-      guidance: 'No new leverage, monitor closely',
-      valueClassName: 'text-[#84cc16]',
-    };
-  }
-  return {
-    guidance: 'Normal operation',
-    valueClassName: 'text-[#22c55e]',
-  };
-}
-
 function toBadgeVariant(tone: BadgeTone): BadgeVariant {
   if (tone === 'positive') return 'positive';
   if (tone === 'warning') return 'warning';
   if (tone === 'danger') return 'destructive';
   return 'default';
-}
-
-async function fetchFromAaveSubgraph(wallet: string): Promise<RawUserReserveWithMarket[]> {
-  const marketResults = await Promise.all(
-    AAVE_MARKETS.map(async (market) => {
-      const graphGatewayEndpoint = GRAPH_API_KEY
-        ? `https://gateway-arbitrum.network.thegraph.com/api/${GRAPH_API_KEY}/subgraphs/id/${market.graphSubgraphId}`
-        : null;
-
-      const endpoints = [
-        ...(graphGatewayEndpoint ? [graphGatewayEndpoint] : []),
-        ...market.fallbackEndpoints,
-      ];
-      const failures: string[] = [];
-      let sawHostedServiceRemoval = false;
-
-      if (endpoints.length === 0) {
-        return {
-          marketName: market.marketName,
-          reserves: [] as RawUserReserve[],
-          failures: ['No endpoint configured (set VITE_THE_GRAPH_API_KEY).'],
-          sawHostedServiceRemoval: false,
-        };
-      }
-
-      for (const endpoint of endpoints) {
-        try {
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              query: USER_RESERVES_QUERY,
-              variables: { user: wallet.toLowerCase() },
-            }),
-          });
-
-          if (!response.ok) {
-            failures.push(`${endpoint} (${response.status})`);
-            continue;
-          }
-
-          const payload = (await response.json()) as {
-            data?: { userReserves?: RawUserReserve[] };
-            errors?: Array<{ message: string }>;
-          };
-
-          if (payload.errors?.length) {
-            if (
-              payload.errors.some((entry) =>
-                entry.message.toLowerCase().includes('endpoint has been removed'),
-              )
-            ) {
-              sawHostedServiceRemoval = true;
-            }
-            failures.push(`${endpoint} (GraphQL error)`);
-            continue;
-          }
-
-          return {
-            marketName: market.marketName,
-            reserves: payload.data?.userReserves ?? [],
-            failures: [] as string[],
-            sawHostedServiceRemoval: false,
-          };
-        } catch {
-          failures.push(`${endpoint} (network)`);
-        }
-      }
-
-      return {
-        marketName: market.marketName,
-        reserves: [] as RawUserReserve[],
-        failures,
-        sawHostedServiceRemoval,
-      };
-    }),
-  );
-
-  const successfulResults = marketResults.filter((result) => result.failures.length === 0);
-  if (successfulResults.length > 0) {
-    return successfulResults.flatMap((result) =>
-      result.reserves.map((reserve) => ({ ...reserve, __marketName: result.marketName })),
-    );
-  }
-
-  const sawHostedServiceRemoval = marketResults.some((result) => result.sawHostedServiceRemoval);
-  if (!GRAPH_API_KEY && sawHostedServiceRemoval) {
-    throw new Error(
-      'Aave subgraph hosted-service endpoints were deprecated. Set VITE_THE_GRAPH_API_KEY in your .env (The Graph API key) and restart the dev server.',
-    );
-  }
-
-  const failureText = marketResults
-    .map((result) => `${result.marketName}: ${result.failures.join(', ')}`)
-    .join(' | ');
-  throw new Error(
-    `Unable to fetch Aave user reserves from public endpoints. Tried: ${failureText}`,
-  );
-}
-
-async function fetchUsdPrices(symbols: string[]): Promise<Map<string, number>> {
-  const ids = Array.from(
-    new Set(
-      symbols
-        .map((symbol) => COINGECKO_IDS_BY_SYMBOL[symbol.toUpperCase()])
-        .filter((value): value is string => Boolean(value)),
-    ),
-  );
-
-  if (ids.length === 0) return new Map();
-
-  const query = new URLSearchParams({
-    ids: ids.join(','),
-    vs_currencies: 'usd',
-  });
-
-  if (COINGECKO_API_KEY) {
-    query.set('x_cg_demo_api_key', COINGECKO_API_KEY);
-  }
-
-  try {
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?${query.toString()}`,
-    );
-    if (!response.ok) {
-      return new Map();
-    }
-
-    const payload = (await response.json()) as Record<string, { usd?: number }>;
-    const prices = new Map<string, number>();
-
-    Object.entries(COINGECKO_IDS_BY_SYMBOL).forEach(([symbol, id]) => {
-      const usd = payload[id]?.usd;
-      if (typeof usd === 'number') {
-        prices.set(symbol.toUpperCase(), usd);
-      }
-    });
-
-    return prices;
-  } catch {
-    return new Map();
-  }
-}
-
-function toAssetPosition(
-  raw: RawUserReserve,
-  amount: number,
-  prices: Map<string, number>,
-): AssetPosition {
-  const address = raw.reserve.underlyingAsset.toLowerCase();
-  const symbol = raw.reserve.symbol.toUpperCase();
-  const usdPrice = prices.get(symbol) ?? 0;
-
-  return {
-    symbol,
-    address,
-    amount,
-    usdPrice,
-    usdValue: amount * usdPrice,
-    collateralEnabled: raw.usageAsCollateralEnabledOnUser,
-    maxLTV: fromBps(raw.reserve.baseLTVasCollateral),
-    liqThreshold: fromBps(raw.reserve.reserveLiquidationThreshold),
-    supplyRate: fromRay(raw.reserve.liquidityRate),
-    borrowRate: fromRay(raw.reserve.variableBorrowRate),
-  };
-}
-
-function buildLoanPositions(
-  reserves: RawUserReserveWithMarket[],
-  prices: Map<string, number>,
-): LoanPosition[] {
-  const loansByMarket = new Map<string, RawUserReserveWithMarket[]>();
-
-  reserves.forEach((reserve) => {
-    const group = loansByMarket.get(reserve.__marketName) ?? [];
-    group.push(reserve);
-    loansByMarket.set(reserve.__marketName, group);
-  });
-
-  return Array.from(loansByMarket.entries()).flatMap(([marketName, marketReserves]) => {
-    const suppliedAssets = marketReserves
-      .map((entry) => {
-        const amount = parseBalance(entry.currentATokenBalance, entry.reserve.decimals);
-        return toAssetPosition(entry, amount, prices);
-      })
-      .filter((entry) => entry.amount > 0);
-
-    const borrowedAssets = marketReserves
-      .map((entry) => {
-        const amount = parseBalance(entry.currentTotalDebt, entry.reserve.decimals);
-        return toAssetPosition(entry, amount, prices);
-      })
-      .filter((entry) => entry.amount > 0);
-
-    const collateralSupplies = suppliedAssets.filter((asset) => asset.collateralEnabled);
-
-    return borrowedAssets.map((borrowed, index) => ({
-      id: `${marketName}-${borrowed.address}-${index}`,
-      marketName,
-      borrowed,
-      supplied: collateralSupplies,
-      totalBorrowedUsd: borrowed.usdValue,
-      totalSuppliedUsd: collateralSupplies.reduce((sum, asset) => sum + asset.usdValue, 0),
-    }));
-  });
-}
-
-function computeLoanMetrics(loan: LoanPosition | null): Computed {
-  if (!loan) {
-    return {
-      units: 0,
-      px: 0,
-      debt: 0,
-      collateralUSD: 0,
-      equity: 0,
-      ltv: 0,
-      leverage: 0,
-      healthFactor: Infinity,
-      liqPrice: Infinity,
-      collateralUSDAtLiq: Infinity,
-      ltvAtLiq: 0,
-      priceDropToLiq: 0,
-      supplyEarnUSD: 0,
-      borrowCostUSD: 0,
-      deployEarnUSD: 0,
-      netEarnUSD: 0,
-      netAPYOnEquity: 0,
-      maxBorrowByLTV: 0,
-      borrowHeadroom: 0,
-      borrowPowerUsed: 0,
-      equityMoveFor10Pct: 0,
-      collateralBufferUSD: 0,
-      alertHF: false,
-      alertLTV: false,
-      ltvMax: 0,
-      lt: 0,
-      rSupply: 0,
-      rBorrow: 0,
-      rDeploy: 0,
-      primaryCollateralSymbol: '—',
-    };
-  }
-
-  const debt = loan.totalBorrowedUsd;
-  const collateralUSD = loan.totalSuppliedUsd;
-  const equity = collateralUSD - debt;
-
-  const ltvMax = weightedAverage(loan.supplied, (asset) => asset.maxLTV);
-  const lt = weightedAverage(loan.supplied, (asset) => asset.liqThreshold);
-  const rSupply = weightedAverage(loan.supplied, (asset) => asset.supplyRate);
-  const rBorrow = loan.borrowed.borrowRate;
-  const rDeploy = R_DEPLOY;
-
-  const ltv = collateralUSD > 0 ? debt / collateralUSD : 0;
-  const leverage = equity > 0 ? collateralUSD / equity : Infinity;
-  const healthFactor = debt > 0 ? (collateralUSD * lt) / debt : Infinity;
-
-  const primary =
-    loan.supplied.length > 0
-      ? loan.supplied.reduce((max, current) => (current.usdValue > max.usdValue ? current : max))
-      : null;
-
-  const units = primary?.amount ?? 0;
-  const px = primary?.usdPrice ?? 0;
-  const primaryCollateralSymbol = primary?.symbol ?? '—';
-
-  const collateralUSDAtLiq = lt > 0 ? debt / lt : Infinity;
-  const collateralOtherUSD = collateralUSD - (primary?.usdValue ?? 0);
-  const primaryUsdAtLiq = collateralUSDAtLiq - collateralOtherUSD;
-  const liqPrice = units > 0 ? primaryUsdAtLiq / units : Infinity;
-  const ltvAtLiq = collateralUSDAtLiq > 0 ? debt / collateralUSDAtLiq : 0;
-  const priceDropToLiq = px > 0 && Number.isFinite(liqPrice) ? (px - liqPrice) / px : 0;
-
-  const supplyEarnUSD = collateralUSD * rSupply;
-  const borrowCostUSD = debt * rBorrow;
-  const deployEarnUSD = debt * rDeploy;
-
-  const netEarnUSD = supplyEarnUSD - borrowCostUSD;
-  const netAPYOnEquity = equity > 0 ? netEarnUSD / equity : 0;
-
-  const maxBorrowByLTV = collateralUSD * ltvMax;
-  const borrowHeadroom = maxBorrowByLTV - debt;
-  const borrowPowerUsed = maxBorrowByLTV > 0 ? debt / maxBorrowByLTV : 0;
-
-  const equityMoveFor10Pct = Number.isFinite(leverage) ? leverage * 0.1 : 0;
-  const collateralBufferUSD = collateralUSD - collateralUSDAtLiq;
-
-  const alertHF = healthFactor < 1.5;
-  const alertLTV = ltv > 0.7 * lt;
-
-  return {
-    units,
-    px,
-    debt,
-    collateralUSD,
-    equity,
-    ltv,
-    leverage,
-    healthFactor,
-    liqPrice,
-    collateralUSDAtLiq,
-    ltvAtLiq,
-    priceDropToLiq,
-    supplyEarnUSD,
-    borrowCostUSD,
-    deployEarnUSD,
-    netEarnUSD,
-    netAPYOnEquity,
-    maxBorrowByLTV,
-    borrowHeadroom,
-    borrowPowerUsed,
-    equityMoveFor10Pct,
-    collateralBufferUSD,
-    alertHF,
-    alertLTV,
-    ltvMax,
-    lt,
-    rSupply,
-    rBorrow,
-    rDeploy,
-    primaryCollateralSymbol,
-  };
 }
 
 export default function App() {
@@ -607,12 +91,12 @@ export default function App() {
     return result.loans.find((loan) => loan.id === selectedLoanId) ?? result.loans[0] ?? null;
   }, [result, selectedLoanId]);
 
-  const computed = useMemo(() => computeLoanMetrics(selectedLoan), [selectedLoan]);
+  const computed = useMemo(() => computeLoanMetrics(selectedLoan, R_DEPLOY), [selectedLoan]);
   const status = healthLabel(computed.healthFactor);
   const portfolio = useMemo(() => {
     if (!result || result.loans.length === 0) return null;
 
-    const metrics = result.loans.map((loan) => computeLoanMetrics(loan));
+    const metrics = result.loans.map((loan: LoanPosition) => computeLoanMetrics(loan, R_DEPLOY));
     const totalDebt = metrics.reduce((sum, item) => sum + item.debt, 0);
     const totalCollateral = metrics.reduce((sum, item) => sum + item.collateralUSD, 0);
     const totalNetWorth = metrics.reduce((sum, item) => sum + item.equity, 0);
@@ -656,9 +140,9 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      const reserves = await fetchFromAaveSubgraph(normalizedWallet);
+      const reserves = await fetchFromAaveSubgraph(normalizedWallet, GRAPH_API_KEY);
       const reserveSymbols = Array.from(new Set(reserves.map((entry) => entry.reserve.symbol)));
-      const prices = await fetchUsdPrices(reserveSymbols);
+      const prices = await fetchUsdPrices(reserveSymbols, COINGECKO_API_KEY);
       const loans = buildLoanPositions(reserves, prices);
       const updatedAt = Date.now();
 
@@ -749,6 +233,7 @@ export default function App() {
               Auto-fetched from wallet address using public blockchain data and price APIs.
             </p>
           </div>
+          <NotificationBell />
         </header>
 
         <section className="mt-4 rounded-[18px] border border-[rgba(168,191,217,0.22)] bg-[linear-gradient(140deg,rgba(11,24,39,0.82),rgba(9,16,28,0.6))] p-4 backdrop-blur-[8px]">
