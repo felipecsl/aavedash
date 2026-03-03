@@ -2,9 +2,50 @@ import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import { ConfigStorage } from './storage.js';
+import { z } from 'zod';
+import { ConfigStorage, type AlertConfig } from './storage.js';
 import { TelegramClient } from './telegram.js';
 import { Monitor } from './monitor.js';
+
+const partialAlertConfigSchema = z
+  .object({
+    wallets: z.array(
+      z.object({
+        address: z.string(),
+        label: z.string().optional(),
+        enabled: z.boolean(),
+      }),
+    ),
+    telegram: z.object({
+      chatId: z.string(),
+      enabled: z.boolean(),
+    }),
+    polling: z.object({
+      intervalMs: z.number().positive(),
+      debounceChecks: z.number().positive(),
+      reminderIntervalMs: z.number().positive(),
+      cooldownMs: z.number().positive(),
+    }),
+    zones: z.array(
+      z.object({
+        name: z.enum(['safe', 'watch', 'alert', 'action', 'critical']),
+        minHF: z.number(),
+        maxHF: z.number(),
+      }),
+    ),
+  })
+  .partial();
+
+function parseConfigBody(body: unknown): { data: Partial<AlertConfig> } | { error: string } {
+  const result = partialAlertConfigSchema.safeParse(body);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const path = issue.path.join('.');
+    const message = path ? `${path}: ${issue.message}` : issue.message;
+    return { error: message };
+  }
+  return { data: result.data };
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_ENV_PATH = join(__dirname, '..', '..', '..', '.env');
@@ -48,8 +89,12 @@ app.get('/api/config', (_req, res) => {
 });
 
 app.put('/api/config', (req, res) => {
-  const body = req.body as Record<string, unknown>;
-  const updated = storage.update(body);
+  const parsed = parseConfigBody(req.body);
+  if ('error' in parsed) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+  const updated = storage.update(parsed.data);
   monitor.restart();
   res.json({
     wallets: updated.wallets,
