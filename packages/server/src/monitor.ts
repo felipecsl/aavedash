@@ -113,9 +113,7 @@ export class Monitor {
 
     for (const loan of loans) {
       const metrics = computeLoanMetrics(loan, DEFAULT_R_DEPLOY);
-      const zone = config.zones
-        ? classifyZone(metrics.healthFactor, config.zones)
-        : classifyZone(metrics.healthFactor);
+      const zone = classifyZone(metrics.healthFactor, this.hydrateZones(config.zones));
       const stateKey = `${address}-${loan.id}`;
       const existing = this.states.get(stateKey);
 
@@ -189,6 +187,22 @@ export class Monitor {
         }
       }
     }
+  }
+
+  private hydrateZones(configuredZones: AlertConfig['zones'] | undefined): Zone[] {
+    if (!configuredZones || configuredZones.length === 0) {
+      return DEFAULT_ZONES;
+    }
+
+    const thresholdsByName = new Map(
+      configuredZones.map((zone) => [zone.name, { minHF: zone.minHF, maxHF: zone.maxHF }]),
+    );
+
+    return DEFAULT_ZONES.map((zone) => {
+      const override = thresholdsByName.get(zone.name);
+      if (!override) return zone;
+      return { ...zone, minHF: override.minHF, maxHF: override.maxHF };
+    });
   }
 
   private async sendNotification(chatId: string, message: string): Promise<void> {

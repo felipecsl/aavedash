@@ -14,9 +14,9 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dev:server": "npm run dev --workspace=packages/server",
-    "dev:all": "npm run dev & npm run dev:server",
-    "build:server": "npm run build --workspace=packages/server"
+    "dev:server": "yarn workspace @aave-monitor/server dev",
+    "dev:all": "yarn dev & yarn dev:server",
+    "build:server": "yarn workspace @aave-monitor/server build"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

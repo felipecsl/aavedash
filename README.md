@@ -98,15 +98,15 @@ Supported query params: `wallet`, `address`, `walletAddress`.
 ## Scripts
 
 ```bash
-npm run dev           # start frontend dev server
-npm run dev:server    # start backend monitor server
-npm run dev:all       # start both frontend and server
-npm run typecheck     # TypeScript checks
-npm run lint          # ESLint
-npm run format        # Prettier format
-npm run build         # production frontend build
-npm run build:server  # production server build
-npm run preview       # preview production build
+yarn dev           # start frontend dev server
+yarn dev:server    # start backend monitor server
+yarn dev:all       # start both frontend and server
+yarn typecheck     # TypeScript checks
+yarn lint          # ESLint
+yarn format        # Prettier format
+yarn build         # production frontend build
+yarn build:server  # production server build
+yarn preview       # preview production build
 ```
 
 ## GitHub Pages Deployment
@@ -137,7 +137,7 @@ Quick start:
 
 1. Create a Telegram bot via [@BotFather](https://t.me/BotFather) and get the bot token.
 2. Add `TELEGRAM_BOT_TOKEN=<your token>` to the project root `.env`.
-3. Run `npm run dev:server` to start the monitor.
+3. Run `yarn dev:server` to start the monitor.
 4. Add `VITE_NOTIFICATION_API_URL=http://localhost:3001` to the same root `.env` and use the bell icon in the dashboard to configure alerts.
 
 ## How It Works
