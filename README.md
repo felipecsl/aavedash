@@ -111,20 +111,16 @@ yarn preview       # preview production build
 
 ## Docker Compose
 
-Run both the dashboard UI and notification server together:
+Run the unified app (dashboard UI + API server) with:
 
 ```bash
 docker compose up --build
 ```
 
-Services:
-
-- Dashboard UI: `http://localhost:5173`
-- Server API: `http://localhost:3001`
+The app is available at `http://localhost:3001` (both UI and API served from the same Express server).
 
 Notes:
 
-- The frontend is built with `VITE_NOTIFICATION_API_URL` (defaults to `http://localhost:3001` in `docker-compose.yml`).
 - Server runtime env vars (for example `TELEGRAM_BOT_TOKEN`) are loaded from the root `.env` via `env_file`.
 
 ## GitHub Pages Deployment
@@ -157,7 +153,7 @@ Quick start:
 1. Create a Telegram bot via [@BotFather](https://t.me/BotFather) and get the bot token.
 2. Add `TELEGRAM_BOT_TOKEN=<your token>` to the project root `.env`.
 3. Run `yarn dev:server` to start the monitor.
-4. Add `VITE_NOTIFICATION_API_URL=http://localhost:3001` to the same root `.env` and use the bell icon in the dashboard to configure alerts.
+4. Use the bell icon in the dashboard to configure alerts.
 5. If monitor status appears stale, trigger an immediate refresh with `POST /api/status/refresh` (see docs).
 
 ## How It Works

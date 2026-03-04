@@ -1,18 +1,32 @@
-FROM node:25-alpine AS build
+FROM node:25-alpine AS builder
 WORKDIR /app
-
-ARG VITE_NOTIFICATION_API_URL=http://localhost:3001
-ENV VITE_NOTIFICATION_API_URL=${VITE_NOTIFICATION_API_URL}
-
 COPY package.json yarn.lock ./
 COPY packages/aave-core/package.json packages/aave-core/
 COPY packages/server/package.json packages/server/
 RUN yarn install --frozen-lockfile
-
 COPY . .
-RUN yarn build
+RUN yarn workspace @aave-monitor/core run build
+# Vite inlines VITE_* env vars at build time.
+# docker compose: passed via build args; hl: passed via --secret mounts.
+ARG VITE_THE_GRAPH_API_KEY
+ARG VITE_COINGECKO_API_KEY
+RUN --mount=type=secret,id=VITE_THE_GRAPH_API_KEY \
+    --mount=type=secret,id=VITE_COINGECKO_API_KEY \
+    VITE_THE_GRAPH_API_KEY=${VITE_THE_GRAPH_API_KEY:-$(cat /run/secrets/VITE_THE_GRAPH_API_KEY 2>/dev/null)} \
+    VITE_COINGECKO_API_KEY=${VITE_COINGECKO_API_KEY:-$(cat /run/secrets/VITE_COINGECKO_API_KEY 2>/dev/null)} \
+    yarn build
+RUN yarn workspace @aave-monitor/server run build
 
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+FROM node:25-alpine
+WORKDIR /app
+COPY --from=builder /app/package.json /app/yarn.lock ./
+COPY --from=builder /app/packages/aave-core/package.json packages/aave-core/
+COPY --from=builder /app/packages/aave-core/dist/ packages/aave-core/dist/
+COPY --from=builder /app/packages/server/package.json packages/server/
+COPY --from=builder /app/packages/server/dist/ packages/server/dist/
+COPY --from=builder /app/node_modules/ node_modules/
+COPY --from=builder /app/dist/ public/
+WORKDIR /app/packages/server
+RUN mkdir -p data
+EXPOSE 3001
+CMD ["node", "dist/index.js"]

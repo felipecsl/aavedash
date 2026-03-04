@@ -310,6 +310,15 @@ telegram.onCommand('help', async (chatId) => {
   );
 });
 
+// Serve frontend static files (built by Vite, copied into /app/public in Docker)
+const publicDir = join(__dirname, '..', '..', '..', 'public');
+if (existsSync(publicDir)) {
+  app.use(express.static(publicDir));
+  app.get('/{*splat}', (_req, res) => {
+    res.sendFile(join(publicDir, 'index.html'));
+  });
+}
+
 app.listen(PORT, () => {
   console.log(`Aave monitor server listening on port ${PORT}`);
 

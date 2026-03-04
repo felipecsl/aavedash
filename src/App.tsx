@@ -36,13 +36,10 @@ const GRAPH_API_KEY = import.meta.env.VITE_THE_GRAPH_API_KEY as string | undefin
 const COINGECKO_API_KEY = import.meta.env.VITE_COINGECKO_API_KEY as string | undefined;
 const R_DEPLOY_ENV = import.meta.env.VITE_R_DEPLOY as string | undefined;
 const R_DEPLOY = parseDeployRate(R_DEPLOY_ENV, DEFAULT_R_DEPLOY);
-const NOTIFICATION_API_URL =
-  (import.meta.env.VITE_NOTIFICATION_API_URL as string | undefined) ?? '';
 const UPDATE_RATE_MS = 120_000;
 
 async function fetchWalletStablecoins(wallet: string): Promise<Map<string, number>> {
-  if (!NOTIFICATION_API_URL) return new Map();
-  const res = await fetch(`${NOTIFICATION_API_URL}/api/balances/${wallet}`);
+  const res = await fetch(`/api/balances/${wallet}`);
   if (!res.ok) return new Map();
   const data = (await res.json()) as Record<string, number>;
   return new Map(Object.entries(data));

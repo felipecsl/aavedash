@@ -31,12 +31,8 @@ type AlertConfig = {
   zones: ZoneConfig[];
 };
 
-const API_URL = import.meta.env.VITE_NOTIFICATION_API_URL as string | undefined;
-
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
-
-  if (!API_URL) return null;
 
   return (
     <>
@@ -65,7 +61,7 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
 
   const fetchConfig = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/api/config`);
+      const response = await fetch(`/api/config`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = (await response.json()) as AlertConfig;
       setConfig(data);
@@ -80,7 +76,7 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
 
   const saveConfig = async (updated: AlertConfig) => {
     try {
-      const response = await fetch(`${API_URL}/api/config`, {
+      const response = await fetch(`/api/config`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(updated),
@@ -97,7 +93,7 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
   const sendTest = async () => {
     setTestStatus('sending');
     try {
-      const response = await fetch(`${API_URL}/api/telegram/test`, { method: 'POST' });
+      const response = await fetch(`/api/telegram/test`, { method: 'POST' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setTestStatus('success');
       setTimeout(() => setTestStatus('idle'), 3000);

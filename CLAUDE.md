@@ -25,7 +25,6 @@ Configured via `.env` in project root (prefixed with `VITE_` for Vite exposure):
 - `VITE_COINGECKO_API_KEY` — optional, avoids CoinGecko rate limits
 - `VITE_R_DEPLOY` — optional deploy APY rate (decimal, default 0.1125)
 - `VITE_BASE_PATH` — used in vite.config.ts for GitHub Pages deployment
-- `VITE_NOTIFICATION_API_URL` — frontend URL for notification server (e.g. `http://localhost:3001`)
 - `RPC_URL` — Ethereum JSON-RPC endpoint used by backend for on-chain reads (default `https://eth.llamarpc.com`)
 - `TELEGRAM_BOT_TOKEN` — backend Telegram bot token (loaded from root `.env`)
 - `PORT` — optional backend port (default `3001`)
@@ -59,7 +58,6 @@ There are no tests, no routing, no state management library, and no API abstract
 ## Deployment
 
 - **GitHub Pages**: automated via `.github/workflows/deploy-pages.yml` on push to `main`
-- **Docker Compose**: `docker compose up --build` starts:
-  - dashboard UI on `http://localhost:5173`
-  - server API on `http://localhost:3001`
-- **Docker**: frontend Dockerfile supports `VITE_NOTIFICATION_API_URL` as a build arg
+- **Docker Compose**: `docker compose up --build` starts the unified app on `http://localhost:3001`
+- **Docker**: single unified image where Express serves both API and frontend static files
+- **hl**: `git push production master` deploys via hl with Procfile (`web: node dist/index.js`)

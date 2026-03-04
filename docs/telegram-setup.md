@@ -59,11 +59,10 @@ The server starts on `http://localhost:3001`.
 
 ## 5. Configure via the UI
 
-1. Set `VITE_NOTIFICATION_API_URL=http://localhost:3001` in the same root `.env` file and restart the frontend dev server.
-2. A bell icon appears in the dashboard header. Click it to open the notification settings panel.
-3. Enter your **Chat ID** and enable notifications.
-4. Click **Test** to verify a test message arrives in Telegram.
-5. Add wallet addresses to monitor.
+1. A bell icon appears in the dashboard header. Click it to open the notification settings panel.
+2. Enter your **Chat ID** and enable notifications.
+3. Click **Test** to verify a test message arrives in Telegram.
+4. Add wallet addresses to monitor.
 
 ## 6. Alternatively, Configure via API
 
