@@ -1,4 +1,4 @@
-# Aave Loan Monitor
+# aash - Aave Loan Monitor
 
 A React + Vite dashboard that auto-loads Aave loan positions from a wallet address and computes risk/health metrics.
 
@@ -13,6 +13,7 @@ A React + Vite dashboard that auto-loads Aave loan positions from a wallet addre
 
 - Wallet-only input UX.
 - Optional query-string wallet input (`wallet`, `address`, or `walletAddress`) with auto-fetch on load when valid.
+- Last successfully loaded wallet is saved in `localStorage` and auto-used on reload when query params are absent.
 - Manual `Refresh` button to reload the current dashboard data on demand.
 - Automatic refresh every 120 seconds after a wallet is loaded.
 - Multi-market support:
@@ -94,6 +95,7 @@ http://localhost:5173/?wallet=0xYourEthereumAddress
 ```
 
 Supported query params: `wallet`, `address`, `walletAddress`.
+If no supported query param is provided, the app falls back to the last wallet saved in browser storage.
 
 ## Scripts
 
@@ -158,7 +160,7 @@ Quick start:
 
 ## How It Works
 
-1. User enters an Ethereum wallet address, or provides it via query string (`wallet`, `address`, or `walletAddress`).
+1. User enters an Ethereum wallet address, provides it via query string (`wallet`, `address`, or `walletAddress`), or reloads with the last saved wallet from browser storage.
 2. App queries Aave subgraph data for supported markets.
 3. Reserves are grouped into loan positions per market.
 4. Token prices are fetched from CoinGecko.

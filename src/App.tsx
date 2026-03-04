@@ -37,6 +37,7 @@ const COINGECKO_API_KEY = import.meta.env.VITE_COINGECKO_API_KEY as string | und
 const R_DEPLOY_ENV = import.meta.env.VITE_R_DEPLOY as string | undefined;
 const R_DEPLOY = parseDeployRate(R_DEPLOY_ENV, DEFAULT_R_DEPLOY);
 const UPDATE_RATE_MS = 120_000;
+const LAST_WALLET_STORAGE_KEY = 'aave-monitor:last-wallet';
 
 async function fetchWalletStablecoins(wallet: string): Promise<Map<string, number>> {
   const res = await fetch(`/api/balances/${wallet}`);
@@ -48,6 +49,17 @@ async function fetchWalletStablecoins(wallet: string): Promise<Map<string, numbe
 function getWalletFromQueryString(): string {
   const params = new URLSearchParams(window.location.search);
   return params.get('wallet') ?? params.get('address') ?? params.get('walletAddress') ?? '';
+}
+
+function getInitialWallet(): string {
+  const walletFromQuery = getWalletFromQueryString().trim();
+  if (walletFromQuery) return walletFromQuery;
+
+  try {
+    return window.localStorage.getItem(LAST_WALLET_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
 }
 
 function fmtUSD(value: number, digits = 0): string {
@@ -86,14 +98,14 @@ function toBadgeVariant(tone: BadgeTone): BadgeVariant {
 }
 
 export default function App() {
-  const [wallet, setWallet] = useState(() => getWalletFromQueryString());
+  const [wallet, setWallet] = useState(() => getInitialWallet());
   const [selectedLoanId, setSelectedLoanId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [result, setResult] = useState<FetchState | null>(null);
   const [walletStablecoins, setWalletStablecoins] = useState<Map<string, number>>(new Map());
   const [now, setNow] = useState(() => Date.now());
-  const hasAutoFetchedFromQuery = useRef(false);
+  const hasAutoFetchedInitialWallet = useRef(false);
 
   const selectedLoan = useMemo(() => {
     if (!result || result.loans.length === 0) return null;
@@ -183,6 +195,11 @@ export default function App() {
         loans,
         lastUpdated: new Date(updatedAt).toISOString(),
       });
+      try {
+        window.localStorage.setItem(LAST_WALLET_STORAGE_KEY, normalizedWallet);
+      } catch {
+        // Ignore storage errors (e.g. storage disabled).
+      }
       setSelectedLoanId((previousLoanId) =>
         loans.some((loan) => loan.id === previousLoanId) ? previousLoanId : (loans[0]?.id ?? ''),
       );
@@ -196,14 +213,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (hasAutoFetchedFromQuery.current) return;
-    const walletFromQuery = getWalletFromQueryString().trim();
+    if (hasAutoFetchedInitialWallet.current) return;
+    const initialWallet = wallet.trim();
 
-    if (!ETHEREUM_ADDRESS_REGEX.test(walletFromQuery)) return;
+    if (!ETHEREUM_ADDRESS_REGEX.test(initialWallet)) return;
 
-    hasAutoFetchedFromQuery.current = true;
-    void fetchLoans(walletFromQuery);
-  }, [fetchLoans]);
+    hasAutoFetchedInitialWallet.current = true;
+    void fetchLoans(initialWallet);
+  }, [wallet, fetchLoans]);
 
   useEffect(() => {
     if (!result?.wallet) return;
