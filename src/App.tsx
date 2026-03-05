@@ -546,6 +546,15 @@ export default function App() {
                           }
                           caption="Liquidation when HF < 1.0"
                         />
+                        <KpiCard
+                          title="Adjusted HF"
+                          value={
+                            Number.isFinite(computed.adjustedHF)
+                              ? computed.adjustedHF.toFixed(2)
+                              : '∞'
+                          }
+                          caption="Excludes same-asset collateral (watchdog view)"
+                        />
                         {(() => {
                           const singleLiq = computed.assetLiquidations[0];
                           return computed.assetLiquidations.length <= 1 ? (

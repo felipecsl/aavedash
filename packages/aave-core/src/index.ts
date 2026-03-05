@@ -1,5 +1,6 @@
 export type {
   AaveMarket,
+  AdjustedHFResult,
   AssetLiquidation,
   AssetPosition,
   BadgeTone,
@@ -24,7 +25,9 @@ export { fetchStablecoinBalances } from './balances.js';
 
 export {
   clamp,
+  computeAdjustedHF,
   computeLoanMetrics,
+  computeRepaymentAmount,
   fromBps,
   fromRay,
   healthLabel,

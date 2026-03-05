@@ -1,4 +1,5 @@
 import type {
+  AdjustedHFResult,
   AssetLiquidation,
   AssetPosition,
   BadgeTone,
@@ -87,6 +88,45 @@ export function parseDeployRate(value: string | undefined, defaultRate: number):
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultRate;
 }
 
+export function computeAdjustedHF(loan: LoanPosition): AdjustedHFResult {
+  const debt = loan.totalBorrowedUsd;
+  const borrowedSymbol = loan.borrowed.symbol;
+
+  const nonSameAssets = loan.supplied.filter((asset) => asset.symbol !== borrowedSymbol);
+  const sameAssets = loan.supplied.filter((asset) => asset.symbol === borrowedSymbol);
+
+  const adjustedCollateralUSD = nonSameAssets.reduce((sum, asset) => sum + asset.usdValue, 0);
+  const adjustedLt = weightedAverage(nonSameAssets, (asset) => asset.liqThreshold);
+  const sameAssetSuppliedUSD = sameAssets.reduce((sum, asset) => sum + asset.usdValue, 0);
+  const sameAssetSuppliedAmount = sameAssets.reduce((sum, asset) => sum + asset.amount, 0);
+
+  const adjustedHF =
+    debt > 0 && adjustedCollateralUSD > 0
+      ? (adjustedCollateralUSD * adjustedLt) / debt
+      : debt > 0
+        ? 0
+        : Infinity;
+
+  return {
+    adjustedHF,
+    adjustedCollateralUSD,
+    adjustedLt,
+    sameAssetSuppliedUSD,
+    sameAssetSuppliedAmount,
+    debt,
+  };
+}
+
+export function computeRepaymentAmount(
+  targetHF: number,
+  adjustedCollateralUSD: number,
+  adjustedLt: number,
+  currentDebt: number,
+): number {
+  const repay = currentDebt - (adjustedCollateralUSD * adjustedLt) / targetHF;
+  return Math.max(0, repay);
+}
+
 export function computeLoanMetrics(loan: LoanPosition | null, rDeploy: number): Computed {
   if (!loan) {
     return {
@@ -112,6 +152,7 @@ export function computeLoanMetrics(loan: LoanPosition | null, rDeploy: number): 
       borrowPowerUsed: 0,
       equityMoveFor10Pct: 0,
       collateralBufferUSD: 0,
+      adjustedHF: Infinity,
       alertHF: false,
       alertLTV: false,
       ltvMax: 0,
@@ -208,6 +249,7 @@ export function computeLoanMetrics(loan: LoanPosition | null, rDeploy: number): 
     };
   });
 
+  const { adjustedHF } = computeAdjustedHF(loan);
   const alertHF = healthFactor < 1.5;
   const alertLTV = ltv > 0.7 * lt;
 
@@ -234,6 +276,7 @@ export function computeLoanMetrics(loan: LoanPosition | null, rDeploy: number): 
     borrowPowerUsed,
     equityMoveFor10Pct,
     collateralBufferUSD,
+    adjustedHF,
     alertHF,
     alertLTV,
     ltvMax,

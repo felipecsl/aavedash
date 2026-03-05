@@ -22,6 +22,7 @@ export type LoanAlertState = {
   loanId: string;
   wallet: string;
   healthFactor: number;
+  adjustedHF: number;
   debtUsd: number;
   collateralUsd: number;
   suppliedStablecoinUsd: number;
@@ -202,6 +203,7 @@ export class Monitor {
           loanId: loan.id,
           wallet: address,
           healthFactor: metrics.healthFactor,
+          adjustedHF: metrics.adjustedHF,
           debtUsd: metrics.debt,
           collateralUsd: metrics.collateralUSD,
           suppliedStablecoinUsd,
@@ -219,6 +221,7 @@ export class Monitor {
 
       const previousZone = existing.currentZone;
       existing.healthFactor = metrics.healthFactor;
+      existing.adjustedHF = metrics.adjustedHF;
       existing.debtUsd = metrics.debt;
       existing.collateralUsd = metrics.collateralUSD;
       existing.suppliedStablecoinUsd = suppliedStablecoinUsd;
@@ -322,6 +325,7 @@ export class Monitor {
     },
     metrics: {
       healthFactor: number;
+      adjustedHF: number;
       assetLiquidations: AssetLiquidation[];
     },
     zone: Zone,
@@ -329,6 +333,7 @@ export class Monitor {
   ): string {
     const walletLabel = label ? `${label} (${this.shortAddr(address)})` : this.shortAddr(address);
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '∞';
+    const adjHf = Number.isFinite(metrics.adjustedHF) ? metrics.adjustedHF.toFixed(2) : '∞';
 
     const lines = [
       `${zone.emoji} <b>${zone.label}</b> — Loan Health Changed`,
@@ -337,7 +342,7 @@ export class Monitor {
       `Market: ${loan.marketName}`,
       `Borrowed: $${loan.totalBorrowedUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${loan.borrowed.symbol} | Collateral: $${loan.totalSuppliedUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
       '',
-      `Health Factor: <b>${hf}</b>`,
+      `Health Factor: <b>${hf}</b> · Adjusted: <b>${adjHf}</b>`,
       `Zone: ${zone.emoji} ${zone.label} (was ${previousZone.emoji} ${previousZone.label})`,
       `Action: ${zone.action}`,
       '',
@@ -356,19 +361,20 @@ export class Monitor {
     address: string,
     label: string | undefined,
     loan: { marketName: string; borrowed: { symbol: string } },
-    metrics: { healthFactor: number },
+    metrics: { healthFactor: number; adjustedHF: number },
     zone: Zone,
     previousZone: Zone,
   ): string {
     const walletLabel = label ? `${label} (${this.shortAddr(address)})` : this.shortAddr(address);
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '∞';
+    const adjHf = Number.isFinite(metrics.adjustedHF) ? metrics.adjustedHF.toFixed(2) : '∞';
 
     return [
       `${zone.emoji} <b>IMPROVING</b> — Zone Recovery`,
       '',
       `Wallet: <code>${walletLabel}</code>`,
       `Market: ${loan.marketName} · ${loan.borrowed.symbol}`,
-      `Health Factor: <b>${hf}</b>`,
+      `Health Factor: <b>${hf}</b> · Adjusted: <b>${adjHf}</b>`,
       `Zone: ${zone.emoji} ${zone.label} (was ${previousZone.emoji} ${previousZone.label})`,
     ].join('\n');
   }
@@ -377,17 +383,18 @@ export class Monitor {
     address: string,
     label: string | undefined,
     loan: { marketName: string; borrowed: { symbol: string } },
-    metrics: { healthFactor: number },
+    metrics: { healthFactor: number; adjustedHF: number },
   ): string {
     const walletLabel = label ? `${label} (${this.shortAddr(address)})` : this.shortAddr(address);
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '∞';
+    const adjHf = Number.isFinite(metrics.adjustedHF) ? metrics.adjustedHF.toFixed(2) : '∞';
 
     return [
       `\u{1F7E2} <b>ALL CLEAR</b> — Back to Safe`,
       '',
       `Wallet: <code>${walletLabel}</code>`,
       `Market: ${loan.marketName} · ${loan.borrowed.symbol}`,
-      `Health Factor: <b>${hf}</b>`,
+      `Health Factor: <b>${hf}</b> · Adjusted: <b>${adjHf}</b>`,
       '',
       `All positions are healthy. Monitoring continues.`,
     ].join('\n');
@@ -397,12 +404,13 @@ export class Monitor {
     address: string,
     label: string | undefined,
     loan: { marketName: string; borrowed: { symbol: string } },
-    metrics: { healthFactor: number },
+    metrics: { healthFactor: number; adjustedHF: number },
     zone: Zone,
     stuckDurationMs: number,
   ): string {
     const walletLabel = label ? `${label} (${this.shortAddr(address)})` : this.shortAddr(address);
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '∞';
+    const adjHf = Number.isFinite(metrics.adjustedHF) ? metrics.adjustedHF.toFixed(2) : '∞';
     const timeAgo = this.formatTimeAgo(stuckDurationMs);
 
     return [
@@ -410,7 +418,7 @@ export class Monitor {
       '',
       `Wallet: <code>${walletLabel}</code>`,
       `Market: ${loan.marketName} · ${loan.borrowed.symbol}`,
-      `Health Factor: <b>${hf}</b>`,
+      `Health Factor: <b>${hf}</b> · Adjusted: <b>${adjHf}</b>`,
       `Duration: ${timeAgo} ago`,
       `Action: ${zone.action}`,
     ].join('\n');

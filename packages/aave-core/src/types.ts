@@ -68,6 +68,7 @@ export type Computed = {
   borrowPowerUsed: number;
   equityMoveFor10Pct: number;
   collateralBufferUSD: number;
+  adjustedHF: number;
   alertHF: boolean;
   alertLTV: boolean;
   ltvMax: number;
@@ -84,6 +85,15 @@ export type AssetLiquidation = {
   liqPrice: number;
   priceDropToLiq: number;
   currentPrice: number;
+};
+
+export type AdjustedHFResult = {
+  adjustedHF: number;
+  adjustedCollateralUSD: number;
+  adjustedLt: number;
+  sameAssetSuppliedUSD: number;
+  sameAssetSuppliedAmount: number;
+  debt: number;
 };
 
 export type AaveMarket = {
