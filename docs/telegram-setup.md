@@ -94,18 +94,19 @@ Telegram bot commands:
 
 | Zone     | HF Range   | Action                           |
 | -------- | ---------- | -------------------------------- |
-| Safe     | > 2.0      | No action                        |
-| Watch    | 1.5 – 2.0  | Monitor closely                  |
-| Alert    | 1.25 – 1.5 | Prepare to act                   |
-| Action   | 1.1 – 1.25 | Repay immediately                |
-| Critical | < 1.1      | Emergency repay / add collateral |
+| Safe     | > 2.2      | No action                        |
+| Comfort  | 1.9 – 2.2  | Monitor routinely                |
+| Watch    | 1.6 – 1.9  | Monitor closely                  |
+| Alert    | 1.3 – 1.6  | Prepare to act                   |
+| Action   | 1.15 – 1.3 | Repay immediately                |
+| Critical | < 1.15     | Emergency repay / add collateral |
 
 Zone thresholds are configurable via the UI settings panel or the `PUT /api/config` endpoint.
 
 ## Anti-Spam Rules
 
 - Notifications fire on **zone transitions only** — no repeats for the same zone.
-- **Worsening zones** notify immediately (e.g. Watch to Alert).
+- **Worsening zones** notify immediately (e.g. Comfort to Watch, Watch to Alert).
 - **Critical zone** bypasses debounce — instant notification.
 - Other zone transitions require **2 consecutive checks** (~10 min) before alerting.
 - **Recovery** sends a single message, then a 30-minute cooldown.

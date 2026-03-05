@@ -1,4 +1,4 @@
-export type ZoneName = 'safe' | 'watch' | 'alert' | 'action' | 'critical';
+export type ZoneName = 'safe' | 'comfort' | 'watch' | 'alert' | 'action' | 'critical';
 
 export type Zone = {
   name: ZoneName;
@@ -14,32 +14,40 @@ export const DEFAULT_ZONES: Zone[] = [
     name: 'safe',
     emoji: '\u{1F7E2}',
     label: 'SAFE',
-    minHF: 2.0,
+    minHF: 2.2,
     maxHF: Infinity,
     action: 'No action',
+  },
+  {
+    name: 'comfort',
+    emoji: '\u{1F7E2}',
+    label: 'COMFORT',
+    minHF: 1.9,
+    maxHF: 2.2,
+    action: 'Monitor routinely',
   },
   {
     name: 'watch',
     emoji: '\u{1F7E1}',
     label: 'WATCH',
-    minHF: 1.5,
-    maxHF: 2.0,
+    minHF: 1.6,
+    maxHF: 1.9,
     action: 'Monitor closely',
   },
   {
     name: 'alert',
     emoji: '\u{1F7E0}',
     label: 'ALERT',
-    minHF: 1.25,
-    maxHF: 1.5,
+    minHF: 1.3,
+    maxHF: 1.6,
     action: 'Prepare to act',
   },
   {
     name: 'action',
     emoji: '\u{1F534}',
     label: 'ACTION',
-    minHF: 1.1,
-    maxHF: 1.25,
+    minHF: 1.15,
+    maxHF: 1.3,
     action: 'Repay immediately',
   },
   {
@@ -47,7 +55,7 @@ export const DEFAULT_ZONES: Zone[] = [
     emoji: '\u{1F6A8}',
     label: 'CRITICAL',
     minHF: 0,
-    maxHF: 1.1,
+    maxHF: 1.15,
     action: 'Emergency repay / add collateral NOW',
   },
 ];
@@ -73,10 +81,11 @@ export function classifyZone(healthFactor: number, zones: Zone[] = DEFAULT_ZONES
 
 const ZONE_SEVERITY: Record<ZoneName, number> = {
   safe: 0,
-  watch: 1,
-  alert: 2,
-  action: 3,
-  critical: 4,
+  comfort: 1,
+  watch: 2,
+  alert: 3,
+  action: 4,
+  critical: 5,
 };
 
 export function isWorsening(from: ZoneName, to: ZoneName): boolean {

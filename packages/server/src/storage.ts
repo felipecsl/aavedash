@@ -42,11 +42,12 @@ const DEFAULT_CONFIG: AlertConfig = {
     cooldownMs: 30 * 60 * 1000,
   },
   zones: [
-    { name: 'safe', minHF: 2.0, maxHF: Infinity },
-    { name: 'watch', minHF: 1.5, maxHF: 2.0 },
-    { name: 'alert', minHF: 1.25, maxHF: 1.5 },
-    { name: 'action', minHF: 1.1, maxHF: 1.25 },
-    { name: 'critical', minHF: 0, maxHF: 1.1 },
+    { name: 'safe', minHF: 2.2, maxHF: Infinity },
+    { name: 'comfort', minHF: 1.9, maxHF: 2.2 },
+    { name: 'watch', minHF: 1.6, maxHF: 1.9 },
+    { name: 'alert', minHF: 1.3, maxHF: 1.6 },
+    { name: 'action', minHF: 1.15, maxHF: 1.3 },
+    { name: 'critical', minHF: 0, maxHF: 1.15 },
   ],
 };
 

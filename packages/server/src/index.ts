@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { z } from 'zod';
+import { formatDistanceToNowStrict } from 'date-fns';
 import {
   classifyZone,
   DEFAULT_ZONES,
@@ -34,7 +35,7 @@ const partialAlertConfigSchema = z
     }),
     zones: z.array(
       z.object({
-        name: z.enum(['safe', 'watch', 'alert', 'action', 'critical']),
+        name: z.enum(['safe', 'comfort', 'watch', 'alert', 'action', 'critical']),
         minHF: z.number(),
         maxHF: z.number(),
       }),
@@ -234,6 +235,8 @@ function formatStatusMessage(
   const fmtUsd = (value: number): string =>
     `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
   const fmtPct = (value: number): string => `${(value * 100).toFixed(2)}%`;
+  const fmtDateWithRelative = (value: number): string =>
+    `${new Date(value).toLocaleString()} (${formatDistanceToNowStrict(value, { addSuffix: true })})`;
   const visibleStates = status.states.filter(
     (state) => state.debtUsd >= MIN_POSITION_USD || state.collateralUsd >= MIN_POSITION_USD,
   );
@@ -302,7 +305,7 @@ function formatStatusMessage(
   }
 
   if (status.lastPollAt) {
-    lines.push(`Last updated: ${new Date(status.lastPollAt).toLocaleString()}`);
+    lines.push(`Last updated: ${fmtDateWithRelative(status.lastPollAt)}`);
   }
   if (status.lastError) {
     lines.push(`Last error: ${status.lastError}`);
