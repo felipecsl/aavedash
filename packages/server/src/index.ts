@@ -230,15 +230,19 @@ function formatStatusMessage(
   status: ReturnType<typeof monitor.getStatus>,
   configuredZones: AlertConfig['zones'],
 ): string {
+  const MIN_POSITION_USD = 0.01;
   const fmtUsd = (value: number): string =>
     `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
   const fmtPct = (value: number): string => `${(value * 100).toFixed(2)}%`;
+  const visibleStates = status.states.filter(
+    (state) => state.debtUsd >= MIN_POSITION_USD || state.collateralUsd >= MIN_POSITION_USD,
+  );
 
   if (!status.running) {
     return 'Monitor is not running.';
   }
 
-  if (status.states.length === 0) {
+  if (visibleStates.length === 0) {
     const lastPoll = status.lastPollAt
       ? `\nLast poll: ${new Date(status.lastPollAt).toLocaleString()}`
       : '';
@@ -246,7 +250,7 @@ function formatStatusMessage(
   }
 
   const lines: string[] = ['<b>Loan Status</b>', ''];
-  const totals = status.states.reduce(
+  const totals = visibleStates.reduce(
     (acc, state) => {
       acc.debt += state.debtUsd;
       acc.collateral += state.collateralUsd;
@@ -262,7 +266,7 @@ function formatStatusMessage(
   const totalStablecoinUsd = totals.suppliedStablecoin + status.totalWalletStablecoinUsd;
   const cashMargin = totals.debt > 0 ? totalStablecoinUsd / totals.debt : 0;
   const borrowPowerUsed = totals.maxBorrowByLtv > 0 ? totals.debt / totals.maxBorrowByLtv : 0;
-  const finiteHealthFactors = status.states
+  const finiteHealthFactors = visibleStates
     .map((state) => state.healthFactor)
     .filter((healthFactor) => Number.isFinite(healthFactor));
   const averageHealthFactor =
@@ -286,7 +290,7 @@ function formatStatusMessage(
     '',
   );
 
-  for (const state of status.states) {
+  for (const state of visibleStates) {
     const addr = `${state.wallet.slice(0, 6)}...${state.wallet.slice(-4)}`;
     const hf = Number.isFinite(state.healthFactor) ? state.healthFactor.toFixed(2) : '∞';
     lines.push(

@@ -21,6 +21,7 @@ A React + Vite dashboard that auto-loads Aave loan positions from a wallet addre
   - `proto_lido_v3`
 - Tabs for multiple loans/borrowed assets.
 - Top-level portfolio metrics across all active loans (average health factor, weighted APYs, total debt/collateral/net worth).
+- Fully paid-off / dust positions with effectively zero USD exposure are filtered out.
 - Portfolio average HF color bands:
   - `HF > 2.2`: normal operation (green)
   - `HF 1.8–2.2`: no new leverage, monitor closely
@@ -149,6 +150,7 @@ After each push to `main`, the workflow builds the app and publishes `dist` to G
 
 A backend monitoring service can poll your positions and send Telegram alerts when health factor zones change (e.g. Safe → Watch → Alert → Critical). See **[docs/telegram-setup.md](docs/telegram-setup.md)** for full setup instructions.
 The Telegram `/status` command includes a portfolio summary with average health factor, Net APY, total collateral, total debt, portfolio borrow power used, and cash margin of safety (USD and %).
+Paid-off / zero-value positions are excluded from both dashboard and Telegram status output.
 
 Quick start:
 

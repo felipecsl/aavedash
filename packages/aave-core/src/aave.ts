@@ -7,6 +7,8 @@ import type {
   RawUserReserveWithMarket,
 } from './types.js';
 
+const MIN_POSITION_USD = 0.01;
+
 export async function fetchFromAaveSubgraph(
   wallet: string,
   graphApiKey: string | undefined,
@@ -160,13 +162,18 @@ export function buildLoanPositions(
 
     const collateralSupplies = suppliedAssets.filter((asset) => asset.collateralEnabled);
 
-    return borrowedAssets.map((borrowed, index) => ({
-      id: `${marketName}-${borrowed.address}-${index}`,
-      marketName,
-      borrowed,
-      supplied: collateralSupplies,
-      totalBorrowedUsd: borrowed.usdValue,
-      totalSuppliedUsd: collateralSupplies.reduce((sum, asset) => sum + asset.usdValue, 0),
-    }));
+    return borrowedAssets
+      .map((borrowed, index) => ({
+        id: `${marketName}-${borrowed.address}-${index}`,
+        marketName,
+        borrowed,
+        supplied: collateralSupplies,
+        totalBorrowedUsd: borrowed.usdValue,
+        totalSuppliedUsd: collateralSupplies.reduce((sum, asset) => sum + asset.usdValue, 0),
+      }))
+      .filter(
+        (loan) =>
+          loan.totalBorrowedUsd >= MIN_POSITION_USD || loan.totalSuppliedUsd >= MIN_POSITION_USD,
+      );
   });
 }

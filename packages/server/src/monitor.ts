@@ -110,6 +110,11 @@ export class Monitor {
 
     const enabledWallets = config.wallets.filter((w) => w.enabled);
     const enabledAddresses = new Set(enabledWallets.map((wallet) => wallet.address.toLowerCase()));
+    for (const [stateKey, state] of Array.from(this.states.entries())) {
+      if (!enabledAddresses.has(state.wallet.toLowerCase())) {
+        this.states.delete(stateKey);
+      }
+    }
     for (const existingAddress of Array.from(this.walletStablecoinUsd.keys())) {
       if (!enabledAddresses.has(existingAddress)) {
         this.walletStablecoinUsd.delete(existingAddress);
@@ -167,6 +172,7 @@ export class Monitor {
     this.walletStablecoinUsd.set(address.toLowerCase(), walletStablecoinUsd);
 
     const now = Date.now();
+    const activeStateKeys = new Set<string>();
 
     for (const loan of loans) {
       const metrics = computeLoanMetrics(loan, DEFAULT_R_DEPLOY);
@@ -176,6 +182,7 @@ export class Monitor {
       );
       const zone = classifyZone(metrics.healthFactor, this.hydrateZones(config.zones));
       const stateKey = `${address}-${loan.id}`;
+      activeStateKeys.add(stateKey);
 
       const collateralInfo = loan.supplied
         .map((c) => `${c.symbol}=$${prices.get(c.symbol) ?? 'MISSING'}`)
@@ -269,6 +276,13 @@ export class Monitor {
           existing.lastNotifiedZone = zone.name;
           existing.lastNotifiedAt = now;
         }
+      }
+    }
+
+    const walletPrefix = `${address}-`;
+    for (const stateKey of Array.from(this.states.keys())) {
+      if (stateKey.startsWith(walletPrefix) && !activeStateKeys.has(stateKey)) {
+        this.states.delete(stateKey);
       }
     }
   }
