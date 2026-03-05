@@ -358,11 +358,6 @@ export default function App() {
                     </CardHeader>
                     <CardContent className="grid-cols-3 max-[980px]:grid-cols-1">
                       <KpiCard
-                        title="Active loans"
-                        value={String(portfolio.loanCount)}
-                        caption="Detected borrowed positions"
-                      />
-                      <KpiCard
                         title="Total debt"
                         value={fmtUSD(portfolio.totalDebt, 0)}
                         caption="Combined across all active loans"
