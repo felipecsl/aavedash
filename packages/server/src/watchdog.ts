@@ -367,10 +367,9 @@ export class Watchdog {
       throw new Error('No private key configured');
     }
 
-    // Use eth_sendTransaction — requires the RPC to support wallet signing
-    // (e.g., a local node or a signing proxy). For production, this should
-    // sign locally, but that requires a full secp256k1 implementation.
-    // For now, we import ethers lazily only for signing.
+    // Sign the transaction locally using ethers.Wallet and send it as a raw
+    // signed transaction (eth_sendRawTransaction). We import ethers lazily
+    // here so that it is only loaded when a transaction actually needs signing.
     const { Wallet, JsonRpcProvider } = await import('ethers');
     const provider = new JsonRpcProvider(this.rpcUrl);
     const wallet = new Wallet(this.privateKey, provider);
