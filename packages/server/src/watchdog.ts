@@ -179,7 +179,7 @@ export class Watchdog {
       return;
     }
 
-    await this.executeRepay(
+    const success = await this.executeRepay(
       loan,
       walletAddress,
       adjusted,
@@ -188,14 +188,16 @@ export class Watchdog {
       config,
     );
 
-    this.cooldowns.set(stateKey, Date.now());
+    if (success) {
+      this.cooldowns.set(stateKey, Date.now());
 
-    // Update wallet balances to reflect the repayment for subsequent loans
-    const currentBalance = walletBalances.get(loan.borrowed.symbol) ?? 0;
-    walletBalances.set(
-      loan.borrowed.symbol,
-      Math.max(0, currentBalance - (actualRepayAmount - withdrawAmount)),
-    );
+      // Update wallet balances to reflect the repayment for subsequent loans
+      const currentBalance = walletBalances.get(loan.borrowed.symbol) ?? 0;
+      walletBalances.set(
+        loan.borrowed.symbol,
+        Math.max(0, currentBalance - (actualRepayAmount - withdrawAmount)),
+      );
+    }
   }
 
   private async executeRepay(
@@ -205,7 +207,7 @@ export class Watchdog {
     repayAmount: number,
     withdrawAmount: number,
     config: WatchdogConfig,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const now = Date.now();
     const txHashes: string[] = [];
     const symbol = loan.borrowed.symbol;
@@ -220,7 +222,7 @@ export class Watchdog {
         adjustedHF: adjusted.adjustedHF,
         repayAmountUsd: 0,
       });
-      return;
+      return false;
     }
 
     try {
@@ -242,7 +244,7 @@ export class Watchdog {
             `Current: ${gasPriceGwei.toFixed(1)} gwei (max: ${config.maxGasGwei})\n` +
             `Skipping repayment of ${repayAmount.toFixed(2)} ${symbol}`,
         );
-        return;
+        return false;
       }
 
       // Check ETH balance for gas
@@ -262,7 +264,7 @@ export class Watchdog {
             `Balance: ${ethBalance.toFixed(6)} ETH\n` +
             `Skipping repayment of ${repayAmount.toFixed(2)} ${symbol}`,
         );
-        return;
+        return false;
       }
 
       const repayRaw = amountToHex(repayAmount, contract.decimals);
@@ -323,6 +325,7 @@ export class Watchdog {
           `Adjusted HF was: ${adjusted.adjustedHF.toFixed(4)}\n` +
           `Tx: ${txHashes.map((h) => `<code>${h}</code>`).join('\n')}`,
       );
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.addLog({
@@ -343,6 +346,7 @@ export class Watchdog {
             ? `Partial txs: ${txHashes.map((h) => `<code>${h}</code>`).join('\n')}`
             : ''),
       );
+      return false;
     }
   }
 
