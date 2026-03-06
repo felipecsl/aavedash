@@ -39,6 +39,7 @@ Backend server notes:
 - Telegram `/status` includes `Last updated` with absolute timestamp + relative time (e.g. `3 minutes ago`).
 - Reminder alerts include a human-readable elapsed duration label (e.g. `2h 40m ago`).
 - Fully paid-off / zero-value positions are filtered out of both dashboard data and Telegram status output.
+- Watchdog user-facing docs live in `docs/watchdog-user-manual.md`; document it as in-development until full Step 4+ runtime wiring is complete.
 
 Frontend notes:
 

@@ -169,6 +169,15 @@ Quick start:
 4. Use the bell icon in the dashboard to configure alerts.
 5. If monitor status appears stale, trigger an immediate refresh with `POST /api/status/refresh` (see docs).
 
+## Watchdog (In Development)
+
+Detailed user manual: **[docs/watchdog-user-manual.md](docs/watchdog-user-manual.md)**.
+
+Current status:
+
+- Watchdog engine/config logic is implemented and tested.
+- Full end-to-end runtime wiring (monitor/API/Telegram command surfaces) is still being finalized.
+
 ## How It Works
 
 1. User enters an Ethereum wallet address, provides it via query string (`wallet`, `address`, or `walletAddress`), or reloads with the last saved wallet from browser storage.
