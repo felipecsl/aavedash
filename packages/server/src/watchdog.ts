@@ -361,19 +361,22 @@ export class Watchdog {
     const result = await this.rpcCall<string>('eth_call', [{ to: token, data }, 'latest']);
     return BigInt(result);
   }
+  private walletPromise?: Promise<import('ethers').Wallet>;
 
   private async sendTransaction(_from: string, to: string, data: string): Promise<string> {
     if (!this.privateKey) {
       throw new Error('No private key configured');
     }
 
-    // Sign the transaction locally using ethers.Wallet and send it as a raw
-    // signed transaction (eth_sendRawTransaction). We import ethers lazily
-    // here so that it is only loaded when a transaction actually needs signing.
-    const { Wallet, JsonRpcProvider } = await import('ethers');
-    const provider = new JsonRpcProvider(this.rpcUrl);
-    const wallet = new Wallet(this.privateKey, provider);
+    if (!this.walletPromise) {
+      this.walletPromise = (async () => {
+        const { Wallet, JsonRpcProvider } = await import('ethers');
+        const provider = new JsonRpcProvider(this.rpcUrl);
+        return new Wallet(this.privateKey!, provider);
+      })();
+    }
 
+    const wallet = await this.walletPromise;
     const tx = await wallet.sendTransaction({ to, data });
     const receipt = await tx.wait();
     if (!receipt || receipt.status === 0) {
