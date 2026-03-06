@@ -8,6 +8,8 @@ A React + Vite dashboard that auto-loads Aave loan positions from a wallet addre
 - Fetch live position data from public blockchain indexers.
 - Show all detected loans across supported Aave markets.
 - Compute practical monitoring metrics (HF, LTV, liquidation, leverage, carry/net APY).
+- Notify of meaningful changes to health factors via Telegram bot
+- Partial auto-repay bot maintains loan within a target HF range
 
 ## Features
 
@@ -84,7 +86,7 @@ yarn install --frozen-lockfile
 3. Start development server:
 
 ```bash
-npm run dev
+yarn dev
 ```
 
 4. Open the local URL shown by Vite (usually `http://localhost:5173`).
@@ -117,7 +119,7 @@ Server test suite details:
 
 - Location: `packages/server/test/*.test.ts`
 - Runner: Node built-in test runner via `tsx --test`
-- Current coverage focus: watchdog execution/cooldown behavior and watchdog config migration/merge logic
+- Current coverage focus: watchdog execution/cooldown behavior, watchdog config migration/merge logic, and Telegram command sync behavior
 
 ## Docker Compose
 
@@ -156,6 +158,7 @@ After each push to `main`, the workflow builds the app and publishes `dist` to G
 ## Telegram Notifications
 
 A backend monitoring service can poll your positions and send Telegram alerts when health factor zones change (e.g. Safe → Comfort → Watch → Alert → Action → Critical). See **[docs/telegram-setup.md](docs/telegram-setup.md)** for full setup instructions.
+On server startup, Telegram command metadata is synced with `setMyCommands`, so the in-app slash-command menu matches the backend command handlers.
 The Telegram `/status` command includes a portfolio summary with average health factor, Net APY, total collateral, total debt, portfolio borrow power used, and cash margin of safety (USD and %).
 The `/status` footer shows `Last updated` with both an absolute timestamp and relative time (e.g. `3 minutes ago`).
 Reminder alerts include a human-readable elapsed duration label (e.g. `2h 40m ago`).

@@ -11,7 +11,7 @@ import {
   fetchStablecoinBalances,
 } from '@aave-monitor/core';
 import { ConfigStorage, type AlertConfig, type WatchdogConfig } from './storage.js';
-import { TelegramClient } from './telegram.js';
+import { TelegramClient, type TelegramBotCommand } from './telegram.js';
 import { Monitor } from './monitor.js';
 import {
   formatWatchdogStatusMessage,
@@ -103,11 +103,19 @@ const monitor = new Monitor(
   WATCHDOG_PRIVATE_KEY,
 );
 
+const TELEGRAM_BOT_COMMANDS: TelegramBotCommand[] = [
+  { command: 'status', description: 'Show portfolio status and health factors' },
+  { command: 'refresh', description: 'Refresh data and show updated status' },
+  { command: 'watchdog', description: 'Show watchdog status and recent actions' },
+  { command: 'help', description: 'List available commands' },
+];
+
 function syncRuntimeServices(options: { restartMonitor?: boolean } = {}): void {
   const { restartMonitor = false } = options;
   const config = storage.get();
 
   if (TELEGRAM_BOT_TOKEN) {
+    void telegram.syncCommands(TELEGRAM_BOT_COMMANDS);
     telegram.startCommandPolling();
   } else {
     telegram.stopCommandPolling();
@@ -377,10 +385,7 @@ telegram.onCommand('help', async (chatId) => {
     [
       '<b>Aave Loan Monitor</b>',
       '',
-      '/status — Show portfolio totals, average health factor, and current loan health factors',
-      '/refresh — Force-refresh data and show updated status',
-      '/watchdog — Show watchdog status and recent actions',
-      '/help — Show this help message',
+      ...TELEGRAM_BOT_COMMANDS.map((command) => `/${command.command} — ${command.description}`),
     ].join('\n'),
   );
 });
