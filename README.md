@@ -164,6 +164,7 @@ The Telegram `/status` command includes a portfolio summary with average health 
 The `/status` footer shows `Last updated` with both an absolute timestamp and relative time (e.g. `3 minutes ago`).
 Reminder alerts include a human-readable elapsed duration label (e.g. `2h 40m ago`).
 Paid-off / zero-value positions are excluded from both dashboard and Telegram status output.
+Legacy configs that only persisted five zones are automatically hydrated back to the default six-zone model (`safe`, `comfort`, `watch`, `alert`, `action`, `critical`) when loaded.
 
 Quick start:
 

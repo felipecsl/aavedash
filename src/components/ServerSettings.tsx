@@ -94,10 +94,21 @@ function validateConfig(config: AlertConfig): string | null {
 }
 
 function normalizeConfig(config: Partial<AlertConfig> | null | undefined): AlertConfig {
-  const zones = (config?.zones ?? DEFAULT_ZONE_CONFIG).map((zone) => ({
-    ...zone,
-    maxHF: Number.isFinite(zone.maxHF) ? zone.maxHF : Infinity,
-  }));
+  const configuredZones = config?.zones ?? DEFAULT_ZONE_CONFIG;
+  const thresholdsByName = new Map(
+    configuredZones.map((zone) => [
+      zone.name,
+      {
+        minHF: zone.minHF,
+        maxHF: Number.isFinite(zone.maxHF) ? zone.maxHF : Infinity,
+      },
+    ]),
+  );
+  const zones = DEFAULT_ZONE_CONFIG.map((zone) => {
+    const override = thresholdsByName.get(zone.name);
+    if (!override) return zone;
+    return { ...zone, minHF: override.minHF, maxHF: override.maxHF };
+  });
 
   return {
     wallets: config?.wallets ?? [],

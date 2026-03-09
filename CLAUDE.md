@@ -49,6 +49,7 @@ Backend server notes:
 - Watchdog uses an atomic on-chain rescue path: it computes required WBTC collateral top-up off-chain and submits a single `rescue(...)` transaction to the configured rescue contract.
 - Watchdog is fully wired: monitor integration, `GET /api/watchdog/status` endpoint, `/watchdog` Telegram command, config via `GET/PUT /api/config`, and dashboard settings controls for watchdog fields.
 - `zones[].maxHF` accepts JSON `null` on `PUT /api/config` and is normalized to `Infinity` (important because JSON serialization turns `Infinity` into `null`).
+- Legacy configs that omit one or more zones are hydrated back to the full default six-zone set by name, so runtime, `/api/config`, and the dashboard stay aligned.
 - Monitor runtime is driven by enabled wallets (not Telegram enablement), so watchdog polling can run without Telegram configured.
 
 Frontend notes:

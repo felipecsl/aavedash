@@ -58,6 +58,35 @@ test('load() merges missing watchdog fields from defaults when persisted config 
   }
 });
 
+test('load() restores missing legacy zones from defaults when persisted config omits comfort', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aash-storage-test-'));
+  const configPath = join(dir, 'config.json');
+  const saved = {
+    ...createBaseConfig(),
+    zones: createBaseConfig().zones.filter((zone) => zone.name !== 'comfort'),
+    watchdog: {
+      enabled: true,
+    },
+  };
+
+  try {
+    writeFileSync(configPath, JSON.stringify(saved, null, 2), 'utf-8');
+
+    const storage = new ConfigStorage(configPath);
+    const zones = storage.get().zones;
+    const comfortZone = zones.find((zone) => zone.name === 'comfort');
+
+    assert.equal(zones.length, 6);
+    assert.deepEqual(
+      zones.map((zone) => zone.name),
+      ['safe', 'comfort', 'watch', 'alert', 'action', 'critical'],
+    );
+    assert.deepEqual(comfortZone, { name: 'comfort', minHF: 1.9, maxHF: 2.2 });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('update() merges partial watchdog payload with existing watchdog config', () => {
   const dir = mkdtempSync(join(tmpdir(), 'aash-storage-test-'));
   const configPath = join(dir, 'config.json');

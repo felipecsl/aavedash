@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import {
   DEFAULT_POLLING_CONFIG,
   DEFAULT_WATCHDOG_CONFIG,
+  DEFAULT_ZONES,
   type PollingConfig,
   type WatchdogConfig as CoreWatchdogConfig,
   type ZoneName,
@@ -86,10 +87,32 @@ function mergeWatchdogConfig(config: Partial<WatchdogConfig> | undefined): Watch
 }
 
 function normalizeZones(zones: AlertConfig['zones']): AlertConfig['zones'] {
-  return zones.map((zone) => ({
-    ...zone,
-    maxHF: Number.isFinite(zone.maxHF) ? zone.maxHF : Infinity,
-  }));
+  const thresholdsByName = new Map(
+    zones.map((zone) => [
+      zone.name,
+      {
+        minHF: zone.minHF,
+        maxHF: Number.isFinite(zone.maxHF) ? zone.maxHF : Infinity,
+      },
+    ]),
+  );
+
+  return DEFAULT_ZONES.map((zone) => {
+    const override = thresholdsByName.get(zone.name);
+    if (!override) {
+      return {
+        name: zone.name,
+        minHF: zone.minHF,
+        maxHF: zone.maxHF,
+      };
+    }
+
+    return {
+      name: zone.name,
+      minHF: override.minHF,
+      maxHF: override.maxHF,
+    };
+  });
 }
 
 export class ConfigStorage {
