@@ -349,26 +349,30 @@ export class Watchdog {
   ): Promise<bigint | null> {
     if (maxAmount <= 0n) return null;
 
-    const currentHF = await this.previewResultingHF(provider, rescueContract, user, 0n);
-    if (currentHF >= targetHF) return 0n;
+    // HF is linear in amount: HF(a) = currentHF + slope * a
+    // Two points (amount=0, amount=maxAmount) determine the line exactly.
+    const [currentHF, maxHF] = await Promise.all([
+      this.previewResultingHF(provider, rescueContract, user, 0n),
+      this.previewResultingHF(provider, rescueContract, user, maxAmount),
+    ]);
 
-    const maxHF = await this.previewResultingHF(provider, rescueContract, user, maxAmount);
+    if (currentHF >= targetHF) return 0n;
     if (maxHF < targetHF) return null;
 
-    let low = 0n;
-    let high = maxAmount;
+    // Linear interpolation: amount = maxAmount * (targetHF - currentHF) / (maxHF - currentHF)
+    // Add 1 to round up so we meet the target rather than falling just short.
+    const numerator = maxAmount * (targetHF - currentHF);
+    const denominator = maxHF - currentHF;
+    const estimate = numerator / denominator + 1n;
+    const clamped = estimate > maxAmount ? maxAmount : estimate;
 
-    while (low + 1n < high) {
-      const mid = (low + high) / 2n;
-      const hf = await this.previewResultingHF(provider, rescueContract, user, mid);
-      if (hf >= targetHF) {
-        high = mid;
-      } else {
-        low = mid;
-      }
-    }
+    // Verify the estimate with a single confirmation call
+    const verifiedHF = await this.previewResultingHF(provider, rescueContract, user, clamped);
+    if (verifiedHF >= targetHF) return clamped;
 
-    return high;
+    // Estimate undershot (shouldn't happen with round-up, but handle gracefully).
+    // Use maxAmount since we already know it achieves the target.
+    return maxAmount;
   }
 
   private async previewResultingHF(
