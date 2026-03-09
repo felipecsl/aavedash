@@ -123,6 +123,7 @@ Server test suite details:
 - Location: `packages/server/test/*.test.ts`
 - Runner: Node built-in test runner via `tsx --test`
 - Current coverage focus: watchdog execution/cooldown behavior, watchdog config migration/merge logic, and Telegram command sync behavior
+- `packages/server` uses `tsconfig.typecheck.json` for CI/local typechecks so `@aave-monitor/core` resolves from source without requiring a prebuilt `dist/`
 
 ## Docker Compose
 
