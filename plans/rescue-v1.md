@@ -613,8 +613,3 @@ Your task is to plan and implement **v1 only**.
 The agent should produce a narrow, testable, mainnet-fork-validated v1 implementation of atomic collateral top-up rescue.
 
 ---
-
-```
-
-If you want, I can also turn this into a tighter **AGENTS.md-style execution brief** with explicit tasks, acceptance criteria, and file-by-file implementation hints.
-```
