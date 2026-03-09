@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Setup Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
       - name: Check formatting
         run: yarn format:check
 
@@ -38,6 +41,9 @@ jobs:
 
       - name: Test
         run: yarn test
+
+      - name: Test Solidity contracts
+        run: yarn test:contracts
 
       - name: Build
         run: yarn build
