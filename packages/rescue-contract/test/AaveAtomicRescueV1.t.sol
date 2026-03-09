@@ -230,7 +230,7 @@ contract AaveAtomicRescueV1Test is Test {
         rescue.rescue(params);
     }
 
-    function test_preview_increases_with_amount() external {
+    function test_preview_increases_with_amount() external view {
         uint256 hf0 = rescue.previewResultingHF(user, address(token), 0);
         uint256 hf1 = rescue.previewResultingHF(user, address(token), 10_000_000);
         assertGt(hf1, hf0);
