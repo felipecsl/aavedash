@@ -26,7 +26,7 @@ Set env vars for deploy script:
 export RESCUE_OWNER=0x...                # Contract owner (monitored wallet address)
 export AAVE_POOL=0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2
 export AAVE_ADDRESSES_PROVIDER=0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e
-export AAVE_PROTOCOL_DATA_PROVIDER=0x7B4EB56E7CD4b454BA8ff71E4518426c587bb0e7
+export AAVE_PROTOCOL_DATA_PROVIDER=0x0a16f2FCC0D44FaE41cc54e079281D84A363bECD
 export WBTC_ADDRESS=0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599
 export RPC_URL=https://rpc.mevblocker.io  # or https://eth.llamarpc.com
 ```
