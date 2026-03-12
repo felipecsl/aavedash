@@ -180,6 +180,7 @@ export default function App() {
       averageSupplyApy: totalCollateral > 0 ? totalSupplyEarn / totalCollateral : 0,
       averageBorrowApy: totalDebt > 0 ? totalBorrowCost / totalDebt : 0,
       portfolioNetApy: totalNetWorth > 0 ? totalNetEarn / totalNetWorth : 0,
+      portfolioNetApyOnDebt: totalDebt > 0 ? totalNetEarn / totalDebt : 0,
       borrowPowerUsed: totalMaxBorrow > 0 ? totalDebt / totalMaxBorrow : 0,
       collateralMargin,
       walletCollateralUsd,
@@ -428,6 +429,18 @@ export default function App() {
                               : 'text-destructive'
                         }
                         caption="Weighted by net worth"
+                      />
+                      <KpiCard
+                        title="Net APY (debt)"
+                        value={fmtPct(portfolio.portfolioNetApyOnDebt)}
+                        valueClassName={
+                          portfolio.portfolioNetApyOnDebt >= 0
+                            ? 'text-positive'
+                            : portfolio.portfolioNetApyOnDebt > -0.03
+                              ? 'text-warning'
+                              : 'text-destructive'
+                        }
+                        caption="Weighted by total debt"
                       />
                       <KpiCard
                         title="Borrow power used"
