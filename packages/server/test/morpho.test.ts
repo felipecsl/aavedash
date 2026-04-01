@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { after, before, describe, it } from 'node:test';
+import { afterEach, before, describe, it } from 'node:test';
 import { computeLoanMetrics, DEFAULT_R_DEPLOY, type LoanPosition } from '@aave-monitor/core';
 import { fetchFromMorphoApi, type RawMorphoMarketPosition } from '@aave-monitor/core';
 
@@ -56,7 +56,7 @@ describe('fetchFromMorphoApi', () => {
     originalFetch = globalThis.fetch;
   });
 
-  after(() => {
+  afterEach(() => {
     globalThis.fetch = originalFetch;
   });
 
