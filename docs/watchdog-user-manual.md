@@ -75,7 +75,6 @@ Live mode additionally requires:
 - `morphoRescueContract` configured (separate contract from the Aave rescue)
 - monitored wallet has collateral token balance (market-specific, e.g., WETH)
 - monitored wallet has approved `morphoRescueContract` to pull the collateral token
-- monitored wallet has authorized the rescue contract on Morpho Blue: call `morpho.setAuthorization(morphoRescueContractAddress, true)` once from the monitored wallet (Morpho Blue address: `0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb`)
 
 ## Dry Run vs Live
 
@@ -101,7 +100,6 @@ Live:
 ## Typical Failure Reasons
 
 - Missing/invalid `rescueContract` or `morphoRescueContract`
-- Morpho rescue contract not authorized on Morpho Blue
 - Cooldown active
 - No usable WBTC (balance/allowance/max cap)
 - Projected HF cannot reach `minResultingHF`
@@ -114,6 +112,5 @@ Live:
 - Start with `dryRun=true`.
 - Configure `rescueContract` (Aave) and/or `morphoRescueContract` (Morpho) and verify addresses.
 - Pre-approve collateral tokens from monitored wallet to rescue contract(s).
-- For Morpho: call `morpho.setAuthorization(morphoRescueContract, true)` from the monitored wallet.
 - Keep `maxTopUpWbtc` small during rollout.
 - Monitor Telegram alerts and `/api/watchdog/status`.

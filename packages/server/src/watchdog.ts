@@ -11,7 +11,6 @@ import { logger } from './logger.js';
 
 const WBTC_CONTRACT = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599';
 const WBTC_DECIMALS = 8;
-const MORPHO_BLUE_CONTRACT = '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb';
 
 const ERC20_INTERFACE = new Interface([
   'function balanceOf(address owner) view returns (uint256)',
@@ -26,10 +25,6 @@ const RESCUE_INTERFACE = new Interface([
 const MORPHO_RESCUE_INTERFACE = new Interface([
   'function rescue((address user,(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv) marketParams,uint256 amount,uint256 minResultingHF,uint256 deadline) params)',
   'function previewResultingHF((address loanToken,address collateralToken,address oracle,address irm,uint256 lltv) marketParams, address user, uint256 amount) view returns (uint256)',
-]);
-
-const MORPHO_INTERFACE = new Interface([
-  'function isAuthorized(address authorizer, address authorized) view returns (bool)',
 ]);
 
 const MIN_ETH_FOR_GAS = 0.005;
@@ -176,44 +171,10 @@ export class Watchdog {
           this.previewResultingHF(provider, rescueContract, walletAddress, amount);
 
     try {
-      const balanceChecks: Promise<bigint>[] = [
+      const [walletBalanceRaw, allowanceRaw] = await Promise.all([
         this.getTokenBalance(provider, collateralToken!, walletAddress),
         this.getTokenAllowance(provider, collateralToken!, walletAddress, rescueContract),
-      ];
-
-      // For Morpho, also verify authorization on the Morpho Blue contract
-      if (isMorpho) {
-        balanceChecks.push(
-          this.checkMorphoAuthorization(provider, walletAddress, rescueContract).then(
-            (authorized) => (authorized ? BigInt(Number.MAX_SAFE_INTEGER) : 0n),
-          ),
-        );
-      }
-
-      const checkResults = await Promise.all(balanceChecks);
-      const walletBalanceRaw = checkResults[0]!;
-      const allowanceRaw = checkResults[1]!;
-
-      if (isMorpho && (checkResults[2] ?? 0n) === 0n) {
-        this.addLog({
-          timestamp: now,
-          loanId: loan.id,
-          wallet: walletAddress,
-          action: 'skipped',
-          reason: 'Morpho rescue contract not authorized — call morpho.setAuthorization()',
-          healthFactor,
-          topUpWbtc: 0,
-          projectedHF: healthFactor,
-        });
-        await this.notify(
-          `🚨 <b>Watchdog: Morpho authorization missing</b>\n\n` +
-            `Loan: ${loan.id} (${loan.marketName})\n` +
-            `HF: <b>${healthFactor.toFixed(4)}</b>\n` +
-            `Rescue contract ${rescueContract} is not authorized on Morpho Blue.\n` +
-            `Call morpho.setAuthorization(rescueContract, true) from the monitored wallet.`,
-        );
-        return;
-      }
+      ]);
 
       const maxTopUpRaw = parseUnits(
         config.maxTopUpWbtc.toFixed(collateralDecimals),
@@ -614,17 +575,6 @@ export class Watchdog {
     }
 
     return tx.hash;
-  }
-
-  private async checkMorphoAuthorization(
-    provider: JsonRpcProvider,
-    authorizer: string,
-    authorized: string,
-  ): Promise<boolean> {
-    const data = MORPHO_INTERFACE.encodeFunctionData('isAuthorized', [authorizer, authorized]);
-    const result = await provider.call({ to: MORPHO_BLUE_CONTRACT, data });
-    const [isAuthorized] = MORPHO_INTERFACE.decodeFunctionResult('isAuthorized', result);
-    return Boolean(isAuthorized);
   }
 
   private async getTokenBalance(

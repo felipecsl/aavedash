@@ -61,7 +61,6 @@ Backend server notes:
 - Morpho loan IDs use the market `uniqueKey`; market names follow the `morpho_<COLLATERAL>_<LOAN>` convention.
 - Interest rate / utilization curve charts are not available for Morpho markets (Aave-specific on-chain telemetry).
 - Watchdog rescue supports both Aave and Morpho Blue loans via separate rescue contracts (`rescueContract` for Aave, `morphoRescueContract` for Morpho).
-- Morpho rescue requires the user to authorize the rescue contract on Morpho Blue (`morpho.setAuthorization(rescueContract, true)`) in addition to the ERC20 collateral token approval.
 - Morpho rescue uses the market-specific collateral token (resolved from `LoanPosition.morphoMarketParams`) rather than hardcoded WBTC.
 
 Frontend notes:

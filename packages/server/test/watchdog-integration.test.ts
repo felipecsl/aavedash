@@ -9,7 +9,6 @@ import type { TelegramClient } from '../src/telegram.js';
 const WALLET = '0x1111111111111111111111111111111111111111';
 const RESCUE_CONTRACT = '0x2222222222222222222222222222222222222222';
 const MORPHO_RESCUE_CONTRACT = '0x3333333333333333333333333333333333333333';
-const MORPHO_BLUE_CONTRACT = '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb';
 const WBTC_CONTRACT = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599';
 const WETH_CONTRACT = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const USDC_CONTRACT = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
@@ -556,10 +555,6 @@ const MORPHO_RESCUE_INTERFACE = new Interface([
   'function previewResultingHF((address loanToken,address collateralToken,address oracle,address irm,uint256 lltv) marketParams, address user, uint256 amount) view returns (uint256)',
 ]);
 
-const MORPHO_INTERFACE = new Interface([
-  'function isAuthorized(address authorizer, address authorized) view returns (bool)',
-]);
-
 const SAMPLE_MORPHO_MARKET_PARAMS: MorphoMarketParams = {
   loanToken: USDC_CONTRACT.toLowerCase(),
   collateralToken: WETH_CONTRACT.toLowerCase(),
@@ -613,7 +608,6 @@ function createMorphoLoan(overrides: Partial<LoanPosition> = {}): LoanPosition {
 function createMorphoMockProvider(opts: {
   collateralBalance: bigint;
   collateralAllowance: bigint;
-  isAuthorized: boolean;
   previewHF: (amount: bigint) => bigint;
   gasPriceGwei?: number;
   ethBalance?: number;
@@ -621,7 +615,6 @@ function createMorphoMockProvider(opts: {
   const balanceOfSelector = ERC20_INTERFACE.getFunction('balanceOf')!.selector;
   const allowanceSelector = ERC20_INTERFACE.getFunction('allowance')!.selector;
   const previewSelector = MORPHO_RESCUE_INTERFACE.getFunction('previewResultingHF')!.selector;
-  const isAuthorizedSelector = MORPHO_INTERFACE.getFunction('isAuthorized')!.selector;
 
   return {
     call: async (tx: { to: string; data: string }) => {
@@ -635,14 +628,6 @@ function createMorphoMockProvider(opts: {
         if (selector === allowanceSelector) {
           return ERC20_INTERFACE.encodeFunctionResult('allowance', [opts.collateralAllowance]);
         }
-      }
-
-      // Morpho Blue isAuthorized call
-      if (
-        tx.to.toLowerCase() === MORPHO_BLUE_CONTRACT.toLowerCase() &&
-        selector === isAuthorizedSelector
-      ) {
-        return MORPHO_INTERFACE.encodeFunctionResult('isAuthorized', [opts.isAuthorized]);
       }
 
       // Morpho rescue contract preview call
@@ -676,7 +661,6 @@ describe('Morpho rescue via evaluate', () => {
     const provider = createMorphoMockProvider({
       collateralBalance: maxTopUp,
       collateralAllowance: maxTopUp,
-      isAuthorized: true,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
         return currentHFWad + (slope * amount) / maxTopUp;
@@ -711,12 +695,11 @@ describe('Morpho rescue via evaluate', () => {
     assert.match(log[0]?.reason ?? '', /Invalid or missing morphoRescueContract/);
   });
 
-  test('skips Morpho loan when rescue contract is not authorized', async () => {
+  test('Morpho rescue does not require a separate authorization check', async () => {
     const provider = createMorphoMockProvider({
       collateralBalance: parseUnits('1', 18),
       collateralAllowance: parseUnits('1', 18),
-      isAuthorized: false,
-      previewHF: () => parseUnits('1.5', 18),
+      previewHF: (amount: bigint) => (amount === 0n ? parseUnits('1.5', 18) : parseUnits('1.9', 18)),
     });
 
     const { watchdog, messages } = createWatchdog(
@@ -728,10 +711,10 @@ describe('Morpho rescue via evaluate', () => {
 
     const log = watchdog.getLog();
     assert.equal(log.length, 1);
-    assert.equal(log[0]?.action, 'skipped');
-    assert.match(log[0]?.reason ?? '', /not authorized/);
+    assert.equal(log[0]?.action, 'dry-run');
+    assert.match(log[0]?.reason ?? '', /Would submit atomic rescue/);
     assert.equal(messages.length, 1);
-    assert.match(messages[0]!, /authorization missing/);
+    assert.match(messages[0]!, /Watchdog DRY RUN/);
   });
 
   test('skips Morpho loan missing morphoMarketParams', async () => {
@@ -757,7 +740,6 @@ describe('Morpho rescue via evaluate', () => {
     const provider = createMorphoMockProvider({
       collateralBalance: maxTopUp,
       collateralAllowance: maxTopUp,
-      isAuthorized: true,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
         return parseUnits('2.0', 18);
