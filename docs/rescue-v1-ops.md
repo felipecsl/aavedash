@@ -187,7 +187,6 @@ Save the deployed contract address from the output.
    For a capped allowance, replace `$(cast max-uint)` with the intended collateral amount in token base units.
 
 4. Verify the supported market params match the monitored loan exactly:
-
    - `loanToken`
    - `collateralToken`
    - `oracle`

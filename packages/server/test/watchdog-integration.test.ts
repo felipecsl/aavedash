@@ -699,7 +699,8 @@ describe('Morpho rescue via evaluate', () => {
     const provider = createMorphoMockProvider({
       collateralBalance: parseUnits('1', 18),
       collateralAllowance: parseUnits('1', 18),
-      previewHF: (amount: bigint) => (amount === 0n ? parseUnits('1.5', 18) : parseUnits('1.9', 18)),
+      previewHF: (amount: bigint) =>
+        amount === 0n ? parseUnits('1.5', 18) : parseUnits('1.9', 18),
     });
 
     const { watchdog, messages } = createWatchdog(
