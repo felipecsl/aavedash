@@ -2,7 +2,7 @@
 pragma solidity 0.8.27;
 
 import {Test} from "forge-std/Test.sol";
-import {MorphoAtomicRescueV1, IMorpho} from "../src/MorphoAtomicRescueV1.sol";
+import {MorphoAtomicRescueV1, IMorpho, IIrm} from "../src/MorphoAtomicRescueV1.sol";
 
 contract MockToken {
     string public name = "Mock";
@@ -41,6 +41,22 @@ contract MockMorphoOracle {
 
     function setPrice(uint256 price_) external {
         price = price_;
+    }
+}
+
+contract MockMorphoIrm is IIrm {
+    uint256 public borrowRateWad;
+
+    function setBorrowRateWad(uint256 borrowRateWad_) external {
+        borrowRateWad = borrowRateWad_;
+    }
+
+    function borrowRateView(IMorpho.MarketParams memory, IMorpho.Market memory)
+        external
+        view
+        returns (uint256)
+    {
+        return borrowRateWad;
     }
 }
 
@@ -128,6 +144,7 @@ contract MorphoAtomicRescueV1Test is Test {
     MockToken internal loanToken;
     MockMorpho internal mockMorpho;
     MockMorphoOracle internal mockOracle;
+    MockMorphoIrm internal mockIrm;
     MorphoAtomicRescueV1 internal rescue;
 
     IMorpho.MarketParams internal marketParams;
@@ -137,6 +154,7 @@ contract MorphoAtomicRescueV1Test is Test {
         collateralToken = new MockToken();
         loanToken = new MockToken();
         mockMorpho = new MockMorpho();
+        mockIrm = new MockMorphoIrm();
         // Oracle price: 1 collateral = 30000 loan tokens (e.g., WBTC/USDC), scaled to 1e36
         // For 8-decimal collateral and 6-decimal loan: price = 30000 * 1e36 * 1e6 / 1e8 = 30000e34
         // Actually, Morpho oracle price is: price of 1 unit of collateral (in loan token base units)
@@ -148,7 +166,7 @@ contract MorphoAtomicRescueV1Test is Test {
             loanToken: address(loanToken),
             collateralToken: address(collateralToken),
             oracle: address(mockOracle),
-            irm: address(0x1), // dummy IRM
+            irm: address(mockIrm),
             lltv: 0.86e18 // 86% LLTV
         });
 
@@ -164,8 +182,7 @@ contract MorphoAtomicRescueV1Test is Test {
         vm.prank(user);
         collateralToken.approve(address(rescue), type(uint256).max);
 
-        // Set up a position: 1 WBTC collateral, 20000 USDC borrow
-        // HF = 1e8 * 3e38 * 0.86e18 / (20000e6 * 1e36) = 2.58e64 / 2e46 = 1.29e18
+        // Set up a position: 1 WBTC collateral, ~20k USDC borrow.
         mockMorpho.setPosition(
             marketId,
             user,
@@ -218,11 +235,8 @@ contract MorphoAtomicRescueV1Test is Test {
     }
 
     function test_executes_rescue_when_result_hf_is_sufficient() external {
-        // After rescue, simulate that collateral increased by updating position
-        // Pre-rescue HF with 1 WBTC: ~1.29
-        // After adding 0.5 WBTC (total 1.5 WBTC):
-        // HF = 1.5e8 * 3e38 * 0.86e18 / (20000e6 * 1e36) = 1.935e18
-        // Update the position to reflect post-supply state
+        uint256 expectedPostRescueHf = _expectedHF(1.5e8, 20_000e6, 500_000e6, 500_000e6, 0, 0.86e18, 3e38);
+        // Update the position to reflect post-supply state.
         mockMorpho.setPosition(
             marketId,
             user,
@@ -237,7 +251,7 @@ contract MorphoAtomicRescueV1Test is Test {
             user: user,
             marketParams: marketParams,
             amount: 0.5e8,
-            minResultingHF: 1.9e18,
+            minResultingHF: expectedPostRescueHf - 1,
             deadline: block.timestamp + 10
         });
 
@@ -250,19 +264,20 @@ contract MorphoAtomicRescueV1Test is Test {
     }
 
     function test_reverts_if_resulting_hf_too_low() external {
-        // Don't update the position — HF stays at ~1.29 after "rescue"
-        // (mock doesn't actually change state on supplyCollateral)
+        uint256 expectedHf = _expectedHF(1e8, 20_000e6, 500_000e6, 500_000e6, 0, 0.86e18, 3e38);
         MorphoAtomicRescueV1.RescueParams memory params = MorphoAtomicRescueV1.RescueParams({
             user: user,
             marketParams: marketParams,
             amount: 0.1e8,
-            minResultingHF: 2.0e18,
+            minResultingHF: expectedHf + 1,
             deadline: block.timestamp + 10
         });
 
         vm.prank(owner);
         vm.expectRevert(
-            abi.encodeWithSelector(MorphoAtomicRescueV1.ResultingHFTooLow.selector, 1.29e18, 2.0e18)
+            abi.encodeWithSelector(
+                MorphoAtomicRescueV1.ResultingHFTooLow.selector, expectedHf, expectedHf + 1
+            )
         );
         rescue.rescue(params);
     }
@@ -312,20 +327,133 @@ contract MorphoAtomicRescueV1Test is Test {
     }
 
     function test_preview_math_correctness() external view {
-        // 1 WBTC collateral (1e8), 20000 USDC borrow (20000e6)
-        // Oracle: 3e38 (1 WBTC = 30000 USDC in oracle terms)
-        // LLTV: 0.86e18
-        // HF = 1e8 * 3e38 * 0.86e18 / (20000e6 * 1e36)
-        //    = 2.58e64 / 2e46 = 1.29e18
         uint256 hf = rescue.previewResultingHF(marketParams, user, 0);
-        assertEq(hf, 1.29e18);
+        uint256 expected = _expectedHF(1e8, 20_000e6, 500_000e6, 500_000e6, 0, 0.86e18, 3e38);
+        assertEq(hf, expected);
     }
 
     function test_preview_with_additional_collateral() external view {
-        // Adding 1 WBTC (total 2 WBTC):
-        // HF = 2e8 * 3e38 * 0.86e18 / (20000e6 * 1e36)
-        //    = 5.16e64 / 2e46 = 2.58e18
         uint256 hf = rescue.previewResultingHF(marketParams, user, 1e8);
-        assertEq(hf, 2.58e18);
+        uint256 expected = _expectedHF(2e8, 20_000e6, 500_000e6, 500_000e6, 0, 0.86e18, 3e38);
+        assertEq(hf, expected);
+    }
+
+    function test_preview_accrues_interest_before_health_check() external {
+        uint256 borrowRatePerSecond = 1e14; // 0.01% per second
+        vm.warp(2_000);
+        mockIrm.setBorrowRateWad(borrowRatePerSecond);
+        mockMorpho.setMarket(
+            marketId,
+            MockMorpho.MarketData({
+                totalSupplyAssets: 1_000_000e6,
+                totalSupplyShares: 1_000_000e6,
+                totalBorrowAssets: 500_000e6,
+                totalBorrowShares: 500_000e6,
+                lastUpdate: uint128(block.timestamp - 1_000),
+                fee: 0
+            })
+        );
+
+        uint256 hf = rescue.previewResultingHF(marketParams, user, 0);
+        uint256 expected =
+            _expectedHF(1e8, 20_000e6, 500_000e6, 500_000e6, borrowRatePerSecond, 0.86e18, 3e38);
+        uint256 stale = _expectedHF(1e8, 20_000e6, 500_000e6, 500_000e6, 0, 0.86e18, 3e38);
+
+        assertEq(hf, expected);
+        assertLt(hf, stale);
+    }
+
+    function test_preview_uses_virtual_share_math_for_borrow_conversion() external {
+        mockMorpho.setPosition(
+            marketId,
+            user,
+            MockMorpho.PositionData({
+                supplyShares: 0,
+                borrowShares: 1,
+                collateral: 100
+            })
+        );
+        mockMorpho.setMarket(
+            marketId,
+            MockMorpho.MarketData({
+                totalSupplyAssets: 0,
+                totalSupplyShares: 0,
+                totalBorrowAssets: 10_000_000,
+                totalBorrowShares: 1_000_000,
+                lastUpdate: uint128(block.timestamp),
+                fee: 0
+            })
+        );
+
+        uint256 hf = rescue.previewResultingHF(marketParams, user, 0);
+        uint256 expected = _expectedHF(100, 1, 10_000_000, 1_000_000, 0, 0.86e18, 3e38);
+        uint256 naiveBorrowAssets = _mulDivUp(1, 10_000_000, 1_000_000);
+
+        assertEq(hf, expected);
+        assertEq(_toAssetsUp(1, 10_000_000, 1_000_000), 6);
+        assertGt(naiveBorrowAssets, _toAssetsUp(1, 10_000_000, 1_000_000));
+    }
+
+    function _expectedHF(
+        uint256 collateral,
+        uint256 borrowShares,
+        uint256 totalBorrowAssets,
+        uint256 totalBorrowShares,
+        uint256 borrowRatePerSecond,
+        uint256 lltv,
+        uint256 oraclePrice
+    ) internal pure returns (uint256) {
+        uint256 borrowed =
+            _expectedBorrowAssets(borrowShares, totalBorrowAssets, totalBorrowShares, borrowRatePerSecond, 1_000);
+        uint256 maxBorrow = _wMulDown(_mulDivDown(collateral, oraclePrice, 1e36), lltv);
+        if (borrowed == 0) return type(uint256).max;
+        return _wDivDown(maxBorrow, borrowed);
+    }
+
+    function _expectedBorrowAssets(
+        uint256 borrowShares,
+        uint256 totalBorrowAssets,
+        uint256 totalBorrowShares,
+        uint256 borrowRatePerSecond,
+        uint256 elapsed
+    ) internal pure returns (uint256) {
+        uint256 accruedBorrowAssets = totalBorrowAssets;
+        if (borrowRatePerSecond != 0 && elapsed != 0) {
+            uint256 interest =
+                _wMulDown(totalBorrowAssets, _wTaylorCompounded(borrowRatePerSecond, elapsed));
+            accruedBorrowAssets += interest;
+        }
+        return _toAssetsUp(borrowShares, accruedBorrowAssets, totalBorrowShares);
+    }
+
+    function _toAssetsUp(uint256 shares, uint256 totalAssets, uint256 totalShares)
+        internal
+        pure
+        returns (uint256)
+    {
+        return _mulDivUp(shares, totalAssets + 1, totalShares + 1e6);
+    }
+
+    function _wMulDown(uint256 x, uint256 y) internal pure returns (uint256) {
+        return _mulDivDown(x, y, 1e18);
+    }
+
+    function _wDivDown(uint256 x, uint256 y) internal pure returns (uint256) {
+        return _mulDivDown(x, 1e18, y);
+    }
+
+    function _mulDivDown(uint256 x, uint256 y, uint256 d) internal pure returns (uint256) {
+        return (x * y) / d;
+    }
+
+    function _mulDivUp(uint256 x, uint256 y, uint256 d) internal pure returns (uint256) {
+        return (x * y + (d - 1)) / d;
+    }
+
+    function _wTaylorCompounded(uint256 x, uint256 n) internal pure returns (uint256) {
+        uint256 firstTerm = x * n;
+        uint256 secondTerm = _mulDivDown(firstTerm, firstTerm, 2e18);
+        uint256 thirdTerm = _mulDivDown(secondTerm, firstTerm, 3e18);
+        return firstTerm + secondTerm + thirdTerm;
     }
 }

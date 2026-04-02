@@ -62,6 +62,7 @@ Backend server notes:
 - Interest rate / utilization curve charts are not available for Morpho markets (Aave-specific on-chain telemetry).
 - Watchdog rescue supports both Aave and Morpho Blue loans via separate rescue contracts (`rescueContract` for Aave, `morphoRescueContract` for Morpho).
 - Morpho rescue uses the market-specific collateral token (resolved from `LoanPosition.morphoMarketParams`) rather than hardcoded WBTC.
+- Morpho rescue preview/guard math uses accrued borrow interest and Morpho's virtual-share conversion instead of raw stale market totals.
 
 Frontend notes:
 

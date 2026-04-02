@@ -22,6 +22,7 @@ For Morpho Blue positions, the collateral asset is market-specific (e.g., WETH, 
 - Old flow was non-atomic (`withdraw -> approve -> repay` across multiple txs).
 - New flow is atomic (`rescue(...)`), so either full success or full revert.
 - Contract checks resulting HF and reverts if it is below `minResultingHF`.
+- For Morpho Blue, preview/guard math accounts for accrued borrow interest and Morpho's virtual-share conversion.
 
 ## Configuration
 

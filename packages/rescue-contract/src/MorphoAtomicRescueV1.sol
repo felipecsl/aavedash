@@ -16,6 +16,15 @@ interface IMorpho {
         uint256 lltv;
     }
 
+    struct Market {
+        uint128 totalSupplyAssets;
+        uint128 totalSupplyShares;
+        uint128 totalBorrowAssets;
+        uint128 totalBorrowShares;
+        uint128 lastUpdate;
+        uint128 fee;
+    }
+
     function supplyCollateral(
         MarketParams calldata marketParams,
         uint256 assets,
@@ -39,6 +48,13 @@ interface IMorpho {
             uint128 lastUpdate,
             uint128 fee
         );
+}
+
+interface IIrm {
+    function borrowRateView(IMorpho.MarketParams memory marketParams, IMorpho.Market memory market)
+        external
+        view
+        returns (uint256);
 }
 
 interface IOracle {
@@ -161,26 +177,84 @@ contract MorphoAtomicRescueV1 {
 
         if (borrowShares == 0) return type(uint256).max;
 
-        (,, uint128 totalBorrowAssets, uint128 totalBorrowShares,,) = morpho.market(marketId);
-
-        // Convert borrow shares to assets, rounding up
-        uint256 borrowAssets = totalBorrowShares == 0
-            ? 0
-            : (uint256(borrowShares) * uint256(totalBorrowAssets) + uint256(totalBorrowShares) - 1)
-                / uint256(totalBorrowShares);
-
+        IMorpho.Market memory marketState = _marketState(marketId);
+        uint256 borrowAssets = _expectedBorrowAssets(marketParams, marketState, uint256(borrowShares));
         if (borrowAssets == 0) return type(uint256).max;
 
         uint256 oraclePrice = IOracle(marketParams.oracle).price();
-
-        // HF = (collateral + additionalCollateral) * oraclePrice * lltv / (borrowAssets * ORACLE_PRICE_SCALE)
-        // oraclePrice is scaled to 1e36, lltv is scaled to 1e18, result is in WAD (1e18)
         uint256 totalCollateral = uint256(collateral) + additionalCollateral;
-        return (totalCollateral * oraclePrice * marketParams.lltv) / (borrowAssets * ORACLE_PRICE_SCALE);
+        uint256 maxBorrow = _wMulDown(
+            _mulDivDown(totalCollateral, oraclePrice, ORACLE_PRICE_SCALE), marketParams.lltv
+        );
+        return _wDivDown(maxBorrow, borrowAssets);
     }
 
     function _marketId(IMorpho.MarketParams calldata marketParams) internal pure returns (bytes32) {
         return keccak256(abi.encode(marketParams));
+    }
+
+    function _marketState(bytes32 marketId) internal view returns (IMorpho.Market memory marketState) {
+        (
+            uint128 totalSupplyAssets,
+            uint128 totalSupplyShares,
+            uint128 totalBorrowAssets,
+            uint128 totalBorrowShares,
+            uint128 lastUpdate,
+            uint128 fee
+        ) = morpho.market(marketId);
+
+        marketState = IMorpho.Market({
+            totalSupplyAssets: totalSupplyAssets,
+            totalSupplyShares: totalSupplyShares,
+            totalBorrowAssets: totalBorrowAssets,
+            totalBorrowShares: totalBorrowShares,
+            lastUpdate: lastUpdate,
+            fee: fee
+        });
+    }
+
+    function _expectedBorrowAssets(
+        IMorpho.MarketParams calldata marketParams,
+        IMorpho.Market memory marketState,
+        uint256 borrowShares
+    ) internal view returns (uint256) {
+        uint256 totalBorrowAssets = uint256(marketState.totalBorrowAssets);
+        uint256 elapsed = block.timestamp - uint256(marketState.lastUpdate);
+
+        if (elapsed != 0 && marketParams.irm != address(0)) {
+            uint256 borrowRate = IIrm(marketParams.irm).borrowRateView(marketParams, marketState);
+            uint256 interest = _wMulDown(totalBorrowAssets, _wTaylorCompounded(borrowRate, elapsed));
+            totalBorrowAssets += interest;
+        }
+
+        return _toAssetsUp(borrowShares, totalBorrowAssets, uint256(marketState.totalBorrowShares));
+    }
+
+    function _toAssetsUp(uint256 shares, uint256 totalAssets, uint256 totalShares) internal pure returns (uint256) {
+        return _mulDivUp(shares, totalAssets + 1, totalShares + 1e6);
+    }
+
+    function _wMulDown(uint256 x, uint256 y) internal pure returns (uint256) {
+        return _mulDivDown(x, y, WAD);
+    }
+
+    function _wDivDown(uint256 x, uint256 y) internal pure returns (uint256) {
+        return _mulDivDown(x, WAD, y);
+    }
+
+    function _mulDivDown(uint256 x, uint256 y, uint256 d) internal pure returns (uint256) {
+        return (x * y) / d;
+    }
+
+    function _mulDivUp(uint256 x, uint256 y, uint256 d) internal pure returns (uint256) {
+        return (x * y + (d - 1)) / d;
+    }
+
+    function _wTaylorCompounded(uint256 x, uint256 n) internal pure returns (uint256) {
+        uint256 firstTerm = x * n;
+        uint256 secondTerm = _mulDivDown(firstTerm, firstTerm, 2 * WAD);
+        uint256 thirdTerm = _mulDivDown(secondTerm, firstTerm, 3 * WAD);
+        return firstTerm + secondTerm + thirdTerm;
     }
 
     function _transferIn(address asset, address from, uint256 amount) internal {
