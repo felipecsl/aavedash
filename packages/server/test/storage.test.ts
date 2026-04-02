@@ -52,6 +52,7 @@ test('load() merges missing watchdog fields from defaults when persisted config 
     assert.equal(watchdog.maxTopUpWbtc, 0.5);
     assert.equal(watchdog.deadlineSeconds, 300);
     assert.equal(watchdog.rescueContract, '');
+    assert.equal(watchdog.morphoRescueContract, '');
     assert.equal(watchdog.maxGasGwei, 50);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -104,6 +105,7 @@ test('update() merges partial watchdog payload with existing watchdog config', (
         maxTopUpWbtc: 0.2,
         deadlineSeconds: 120,
         rescueContract: '0x2222222222222222222222222222222222222222',
+        morphoRescueContract: '0x3333333333333333333333333333333333333333',
         maxGasGwei: 10,
       },
     });
@@ -120,6 +122,7 @@ test('update() merges partial watchdog payload with existing watchdog config', (
     assert.equal(watchdog.maxTopUpWbtc, 0.2);
     assert.equal(watchdog.deadlineSeconds, 120);
     assert.equal(watchdog.rescueContract, '0x2222222222222222222222222222222222222222');
+    assert.equal(watchdog.morphoRescueContract, '0x3333333333333333333333333333333333333333');
     assert.equal(watchdog.maxGasGwei, 10);
   } finally {
     rmSync(dir, { recursive: true, force: true });

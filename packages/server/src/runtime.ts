@@ -32,8 +32,16 @@ export function validateWatchdogThresholds(
   if (merged.minResultingHF > merged.targetHF) {
     return 'watchdog.minResultingHF must be less than or equal to watchdog.targetHF';
   }
-  if (merged.enabled && !/^0x[a-fA-F0-9]{40}$/.test(merged.rescueContract)) {
-    return 'watchdog.rescueContract must be a valid Ethereum address when watchdog is enabled';
+  const hasValidAaveContract = /^0x[a-fA-F0-9]{40}$/.test(merged.rescueContract);
+  const hasValidMorphoContract = /^0x[a-fA-F0-9]{40}$/.test(merged.morphoRescueContract);
+  if (merged.rescueContract && !hasValidAaveContract) {
+    return 'watchdog.rescueContract must be a valid Ethereum address when set';
+  }
+  if (merged.morphoRescueContract && !hasValidMorphoContract) {
+    return 'watchdog.morphoRescueContract must be a valid Ethereum address when set';
+  }
+  if (merged.enabled && !hasValidAaveContract && !hasValidMorphoContract) {
+    return 'watchdog requires at least one valid rescue contract when enabled';
   }
 
   return null;

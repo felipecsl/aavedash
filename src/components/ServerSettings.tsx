@@ -84,8 +84,19 @@ function validateConfig(config: AlertConfig): string | null {
     return 'Watchdog deadline seconds must be a positive number.';
   }
 
-  if (watchdog.enabled && !/^0x[a-fA-F0-9]{40}$/.test(watchdog.rescueContract)) {
+  const hasValidAaveContract = /^0x[a-fA-F0-9]{40}$/.test(watchdog.rescueContract);
+  const hasValidMorphoContract = /^0x[a-fA-F0-9]{40}$/.test(watchdog.morphoRescueContract);
+
+  if (watchdog.rescueContract && !hasValidAaveContract) {
     return 'Watchdog rescue contract must be a valid Ethereum address.';
+  }
+
+  if (watchdog.morphoRescueContract && !hasValidMorphoContract) {
+    return 'Morpho rescue contract must be a valid Ethereum address.';
+  }
+
+  if (watchdog.enabled && !hasValidAaveContract && !hasValidMorphoContract) {
+    return 'Enable watchdog only after configuring at least one rescue contract.';
   }
 
   if (!isPositiveFinite(watchdog.maxGasGwei)) {

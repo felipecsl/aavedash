@@ -44,7 +44,9 @@ Validation rules:
 - `targetHF > triggerHF`
 - `minResultingHF > triggerHF`
 - `minResultingHF <= targetHF`
-- `rescueContract` must be a valid address when watchdog is enabled
+- `rescueContract` must be a valid address when set
+- `morphoRescueContract` must be a valid address when set
+- At least one of `rescueContract` or `morphoRescueContract` must be configured when watchdog is enabled
 
 Environment overrides:
 

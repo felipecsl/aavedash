@@ -88,6 +88,26 @@ test('validateWatchdogThresholds enforces targetHF above triggerHF', () => {
     validateWatchdogThresholds(current, { minResultingHF: 2.1 }),
     'watchdog.minResultingHF must be less than or equal to watchdog.targetHF',
   );
+  assert.equal(
+    validateWatchdogThresholds(current, {
+      rescueContract: '',
+      morphoRescueContract: '',
+    }),
+    'watchdog requires at least one valid rescue contract when enabled',
+  );
+  assert.equal(
+    validateWatchdogThresholds(current, {
+      rescueContract: '',
+      morphoRescueContract: '0x3333333333333333333333333333333333333333',
+    }),
+    null,
+  );
+  assert.equal(
+    validateWatchdogThresholds(current, {
+      morphoRescueContract: 'bad',
+    }),
+    'watchdog.morphoRescueContract must be a valid Ethereum address when set',
+  );
   assert.equal(validateWatchdogThresholds(current, undefined), null);
 });
 
