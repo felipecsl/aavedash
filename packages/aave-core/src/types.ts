@@ -14,9 +14,10 @@ export type WatchdogConfig = {
   targetHF: number;
   minResultingHF: number;
   cooldownMs: number;
-  maxTopUpWbtc: number;
+  maxTopUpAmount: number;
   deadlineSeconds: number;
   rescueContract: string;
+  morphoRescueContract: string;
   maxGasGwei: number;
 };
 
@@ -49,6 +50,14 @@ export type AssetPosition = {
   borrowRate: number;
 };
 
+export type MorphoMarketParams = {
+  loanToken: string;
+  collateralToken: string;
+  oracle: string;
+  irm: string;
+  lltv: string;
+};
+
 export type LoanPosition = {
   id: string;
   marketName: string;
@@ -56,6 +65,7 @@ export type LoanPosition = {
   supplied: AssetPosition[];
   totalSuppliedUsd: number;
   totalBorrowedUsd: number;
+  morphoMarketParams?: MorphoMarketParams;
 };
 
 export type RawUserReserveWithMarket = RawUserReserve & { __marketName: string };

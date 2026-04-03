@@ -16,9 +16,10 @@ function createConfig(overrides: Partial<WatchdogConfig> = {}): WatchdogConfig {
     targetHF: 1.9,
     minResultingHF: 1.85,
     cooldownMs: 30 * 60 * 1000,
-    maxTopUpWbtc: 0.5,
+    maxTopUpAmount: 0.5,
     deadlineSeconds: 300,
     rescueContract: RESCUE_CONTRACT,
+    morphoRescueContract: '',
     maxGasGwei: 50,
     ...overrides,
   };
@@ -100,9 +101,9 @@ test('dry-run logs planned atomic rescue and applies cooldown', async () => {
   ).getTokenAllowance = async () => 100_000_000n;
   (
     watchdog as unknown as {
-      findRequiredAmountRaw: () => Promise<bigint | null>;
+      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
     }
-  ).findRequiredAmountRaw = async () => 2_500_000n;
+  ).findRequiredAmountRawGeneric = async () => 2_500_000n;
   (
     watchdog as unknown as {
       previewResultingHF: () => Promise<bigint>;
@@ -120,7 +121,8 @@ test('dry-run logs planned atomic rescue and applies cooldown', async () => {
   assert.match(messages[0]!, /Watchdog DRY RUN/);
   const log = watchdog.getLog();
   assert.equal(log[0]?.action, 'dry-run');
-  assert.equal(log[0]?.topUpWbtc, 0.025);
+  assert.equal(log[0]?.topUpAmount, 0.025);
+  assert.equal(log[0]?.topUpAssetSymbol, 'WBTC');
 });
 
 test('live mode skips when private key is missing', async () => {
@@ -135,9 +137,9 @@ test('live mode skips when private key is missing', async () => {
   ).getTokenAllowance = async () => 100_000_000n;
   (
     watchdog as unknown as {
-      findRequiredAmountRaw: () => Promise<bigint | null>;
+      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
     }
-  ).findRequiredAmountRaw = async () => 1_000_000n;
+  ).findRequiredAmountRawGeneric = async () => 1_000_000n;
   (
     watchdog as unknown as {
       previewResultingHF: () => Promise<bigint>;
@@ -163,9 +165,9 @@ test('live mode executes rescue and records tx hash', async () => {
   ).getTokenAllowance = async () => 100_000_000n;
   (
     watchdog as unknown as {
-      findRequiredAmountRaw: () => Promise<bigint | null>;
+      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
     }
-  ).findRequiredAmountRaw = async () => 1_000_000n;
+  ).findRequiredAmountRawGeneric = async () => 1_000_000n;
   (
     watchdog as unknown as {
       previewResultingHF: () => Promise<bigint>;
@@ -204,9 +206,9 @@ test('cooldown prevents immediate re-execution', async () => {
   ).getTokenAllowance = async () => 100_000_000n;
   (
     watchdog as unknown as {
-      findRequiredAmountRaw: () => Promise<bigint | null>;
+      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
     }
-  ).findRequiredAmountRaw = async () => 1_000_000n;
+  ).findRequiredAmountRawGeneric = async () => 1_000_000n;
   (
     watchdog as unknown as {
       previewResultingHF: () => Promise<bigint>;
@@ -244,9 +246,9 @@ test('failed rescue tx logs error, sets cooldown, and notifies', async () => {
   ).getTokenAllowance = async () => 100_000_000n;
   (
     watchdog as unknown as {
-      findRequiredAmountRaw: () => Promise<bigint | null>;
+      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
     }
-  ).findRequiredAmountRaw = async () => 1_000_000n;
+  ).findRequiredAmountRawGeneric = async () => 1_000_000n;
   (
     watchdog as unknown as {
       previewResultingHF: () => Promise<bigint>;

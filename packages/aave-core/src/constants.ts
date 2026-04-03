@@ -91,8 +91,9 @@ export const DEFAULT_WATCHDOG_CONFIG: WatchdogConfig = {
   targetHF: 1.9,
   minResultingHF: 1.85,
   cooldownMs: 30 * 60 * 1000,
-  maxTopUpWbtc: 0.5,
+  maxTopUpAmount: 0.5,
   deadlineSeconds: 300,
   rescueContract: '',
+  morphoRescueContract: '',
   maxGasGwei: 50,
 };

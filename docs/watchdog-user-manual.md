@@ -13,13 +13,16 @@ It now acts as a planner/submission bot:
 3. Calls the on-chain rescue contract in one transaction.
 4. Contract atomically supplies WBTC collateral and enforces post-HF safety.
 
-Rescue asset in v1 is fixed to **WBTC**.
+Rescue asset in v1 is fixed to **WBTC** for Aave positions.
+
+For Morpho Blue positions, the collateral asset is market-specific (e.g., WETH, WBTC) and is resolved automatically from the loan position data.
 
 ## Why This Is Safer
 
 - Old flow was non-atomic (`withdraw -> approve -> repay` across multiple txs).
 - New flow is atomic (`rescue(...)`), so either full success or full revert.
 - Contract checks resulting HF and reverts if it is below `minResultingHF`.
+- For Morpho Blue, preview/guard math accounts for accrued borrow interest and Morpho's virtual-share conversion.
 
 ## Configuration
 
@@ -31,26 +34,37 @@ Watchdog config fields:
 - `targetHF` (default `1.9`)
 - `minResultingHF` (default `1.85`)
 - `cooldownMs` (default `1800000`)
-- `maxTopUpWbtc` (default `0.5`)
+- `maxTopUpAmount` (default `0.5`)
 - `deadlineSeconds` (default `300`)
-- `rescueContract` (required when `enabled=true`)
+- `rescueContract` (required for Aave rescue when `enabled=true`)
+- `morphoRescueContract` (required for Morpho rescue when `enabled=true`)
 - `maxGasGwei` (default `50`)
+
+Note:
+
+- `rescueContract` is the persisted config field for the Aave rescue contract.
+- `/api/watchdog/status` exposes this as `aaveRescueContract` to make the protocol explicit.
 
 Validation rules:
 
 - `targetHF > triggerHF`
 - `minResultingHF > triggerHF`
 - `minResultingHF <= targetHF`
-- `rescueContract` must be a valid address when watchdog is enabled
+- `rescueContract` must be a valid address when set
+- `morphoRescueContract` must be a valid address when set
+- At least one of `rescueContract` or `morphoRescueContract` must be configured when watchdog is enabled
 
 Environment overrides:
 
 - `WATCHDOG_TRIGGER_HF`
 - `WATCHDOG_TARGET_HF`
 - `WATCHDOG_MIN_RESULTING_HF`
-- `WATCHDOG_MAX_TOP_UP_WBTC`
+- `WATCHDOG_MAX_TOP_UP_AMOUNT` (`WATCHDOG_MAX_TOP_UP_WBTC` still works as a legacy alias)
+- `WATCHDOG_MORPHO_RESCUE_CONTRACT`
 
 ## On-Chain Requirements
+
+### Aave rescue
 
 Live mode requires:
 
@@ -59,6 +73,14 @@ Live mode requires:
 - monitored wallet has WBTC balance
 - monitored wallet has approved `rescueContract` to pull WBTC
 - WBTC is enabled as collateral on the user's Aave position (`pool.setUserUseReserveAsCollateral(WBTC, true)` called once from the monitored wallet)
+
+### Morpho Blue rescue
+
+Live mode additionally requires:
+
+- `morphoRescueContract` configured (separate contract from the Aave rescue)
+- monitored wallet has collateral token balance (market-specific, e.g., WETH)
+- monitored wallet has approved `morphoRescueContract` to pull the collateral token
 
 ## Dry Run vs Live
 
@@ -77,13 +99,15 @@ Live:
 ## API and Telegram
 
 - `GET /api/watchdog/status`: returns summary + recent action log
+- Status summary fields include `aaveRescueContract` and `morphoRescueContract`
+- Recent action entries include `protocol`, `topUpAmount`, and `topUpAssetSymbol`
 - `GET /api/config`: includes watchdog section
 - `PUT /api/config`: updates watchdog fields
 - `/watchdog`: shows watchdog status and recent actions
 
 ## Typical Failure Reasons
 
-- Missing/invalid `rescueContract`
+- Missing/invalid `rescueContract` or `morphoRescueContract`
 - Cooldown active
 - No usable WBTC (balance/allowance/max cap)
 - Projected HF cannot reach `minResultingHF`
@@ -94,7 +118,7 @@ Live:
 ## Safety Checklist
 
 - Start with `dryRun=true`.
-- Configure `rescueContract` and verify address.
-- Pre-approve WBTC from monitored wallet to rescue contract.
-- Keep `maxTopUpWbtc` small during rollout.
-- Monitor Telegram alerts and `/api/watchdog/status`.
+- Configure `rescueContract` (Aave) and/or `morphoRescueContract` (Morpho) and verify addresses.
+- Pre-approve collateral tokens from monitored wallet to rescue contract(s).
+- Keep `maxTopUpAmount` small during rollout.
+- Monitor Telegram alerts and `/api/watchdog/status` for the protocol-specific contract fields and recent top-up activity.

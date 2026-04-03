@@ -41,9 +41,10 @@ function createConfig(walletEnabled: boolean): AlertConfig {
       targetHF: 1.9,
       minResultingHF: 1.85,
       cooldownMs: 30 * 60 * 1000,
-      maxTopUpWbtc: 0.5,
+      maxTopUpAmount: 0.5,
       deadlineSeconds: 300,
       rescueContract: '0x2222222222222222222222222222222222222222',
+      morphoRescueContract: '',
       maxGasGwei: 50,
     },
   };
@@ -57,9 +58,10 @@ function createWatchdogConfig(): WatchdogConfig {
     targetHF: 1.9,
     minResultingHF: 1.85,
     cooldownMs: 30 * 60 * 1000,
-    maxTopUpWbtc: 0.5,
+    maxTopUpAmount: 0.5,
     deadlineSeconds: 300,
     rescueContract: '0x2222222222222222222222222222222222222222',
+    morphoRescueContract: '',
     maxGasGwei: 50,
   };
 }
@@ -86,6 +88,26 @@ test('validateWatchdogThresholds enforces targetHF above triggerHF', () => {
     validateWatchdogThresholds(current, { minResultingHF: 2.1 }),
     'watchdog.minResultingHF must be less than or equal to watchdog.targetHF',
   );
+  assert.equal(
+    validateWatchdogThresholds(current, {
+      rescueContract: '',
+      morphoRescueContract: '',
+    }),
+    'watchdog requires at least one valid rescue contract when enabled',
+  );
+  assert.equal(
+    validateWatchdogThresholds(current, {
+      rescueContract: '',
+      morphoRescueContract: '0x3333333333333333333333333333333333333333',
+    }),
+    null,
+  );
+  assert.equal(
+    validateWatchdogThresholds(current, {
+      morphoRescueContract: 'bad',
+    }),
+    'watchdog.morphoRescueContract must be a valid Ethereum address when set',
+  );
   assert.equal(validateWatchdogThresholds(current, undefined), null);
 });
 
@@ -97,7 +119,8 @@ test('formatWatchdogStatusMessage escapes html-sensitive log content', () => {
     triggerHF: 1.65,
     targetHF: 1.9,
     minResultingHF: 1.85,
-    rescueContract: '0x2222222222222222222222222222222222222222',
+    aaveRescueContract: '0x2222222222222222222222222222222222222222',
+    morphoRescueContract: '0x3333333333333333333333333333333333333333',
     recentActions: 1,
   };
   const log: WatchdogLogEntry[] = [
@@ -105,10 +128,12 @@ test('formatWatchdogStatusMessage escapes html-sensitive log content', () => {
       timestamp: Date.now(),
       loanId: 'loan-1',
       wallet: '0x1111111111111111111111111111111111111111',
+      protocol: 'aave',
       action: 'skipped',
       reason: 'Execution failed: bad <tag> & "quoted"',
       healthFactor: 1.2,
-      topUpWbtc: 0,
+      topUpAmount: 0,
+      topUpAssetSymbol: 'WBTC',
       projectedHF: 1.2,
     },
   ];

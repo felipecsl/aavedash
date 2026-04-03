@@ -76,16 +76,27 @@ function validateConfig(config: AlertConfig): string | null {
     return 'Watchdog cooldown must be a positive number.';
   }
 
-  if (!isPositiveFinite(watchdog.maxTopUpWbtc)) {
-    return 'Watchdog max WBTC top-up must be a positive number.';
+  if (!isPositiveFinite(watchdog.maxTopUpAmount)) {
+    return 'Watchdog max top-up amount must be a positive number.';
   }
 
   if (!isPositiveFinite(watchdog.deadlineSeconds)) {
     return 'Watchdog deadline seconds must be a positive number.';
   }
 
-  if (watchdog.enabled && !/^0x[a-fA-F0-9]{40}$/.test(watchdog.rescueContract)) {
+  const hasValidAaveContract = /^0x[a-fA-F0-9]{40}$/.test(watchdog.rescueContract);
+  const hasValidMorphoContract = /^0x[a-fA-F0-9]{40}$/.test(watchdog.morphoRescueContract);
+
+  if (watchdog.rescueContract && !hasValidAaveContract) {
     return 'Watchdog rescue contract must be a valid Ethereum address.';
+  }
+
+  if (watchdog.morphoRescueContract && !hasValidMorphoContract) {
+    return 'Morpho rescue contract must be a valid Ethereum address.';
+  }
+
+  if (watchdog.enabled && !hasValidAaveContract && !hasValidMorphoContract) {
+    return 'Enable watchdog only after configuring at least one rescue contract.';
   }
 
   if (!isPositiveFinite(watchdog.maxGasGwei)) {
@@ -554,18 +565,20 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                     </label>
 
                     <label className="grid gap-1.5 text-sm">
-                      <span className="text-muted-foreground">Max top-up per action (WBTC)</span>
+                      <span className="text-muted-foreground">
+                        Max top-up per action (rescue asset)
+                      </span>
                       <Input
                         type="number"
                         min="0.0001"
                         step="0.0001"
-                        value={config.watchdog.maxTopUpWbtc}
+                        value={config.watchdog.maxTopUpAmount}
                         onChange={(e) => {
                           const updated = {
                             ...config,
                             watchdog: {
                               ...config.watchdog,
-                              maxTopUpWbtc: Number(e.target.value),
+                              maxTopUpAmount: Number(e.target.value),
                             },
                           };
                           setConfig(updated);
@@ -575,7 +588,7 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                             ...config,
                             watchdog: {
                               ...config.watchdog,
-                              maxTopUpWbtc: Number(e.target.value),
+                              maxTopUpAmount: Number(e.target.value),
                             },
                           };
                           void saveConfig(updated);
@@ -635,6 +648,35 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                             watchdog: {
                               ...config.watchdog,
                               rescueContract: e.target.value.trim(),
+                            },
+                          };
+                          void saveConfig(updated);
+                        }}
+                        placeholder="0x..."
+                        className="font-mono text-xs"
+                      />
+                    </label>
+
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="text-muted-foreground">Morpho rescue contract</span>
+                      <Input
+                        value={config.watchdog.morphoRescueContract}
+                        onChange={(e) => {
+                          const updated = {
+                            ...config,
+                            watchdog: {
+                              ...config.watchdog,
+                              morphoRescueContract: e.target.value.trim(),
+                            },
+                          };
+                          setConfig(updated);
+                        }}
+                        onBlur={(e) => {
+                          const updated = {
+                            ...config,
+                            watchdog: {
+                              ...config.watchdog,
+                              morphoRescueContract: e.target.value.trim(),
                             },
                           };
                           void saveConfig(updated);
