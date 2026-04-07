@@ -9,6 +9,7 @@ const partialWatchdogConfigSchema = z
     targetHF: z.number().positive(),
     minResultingHF: z.number().positive(),
     cooldownMs: z.number().positive(),
+    maxRepayAmount: z.number().positive(),
     maxTopUpAmount: z.number().positive(),
     maxTopUpWbtc: z.number().positive(),
     deadlineSeconds: z.number().int().positive(),
@@ -17,13 +18,15 @@ const partialWatchdogConfigSchema = z
     maxGasGwei: z.number().positive(),
   })
   .partial()
-  .transform(({ maxTopUpWbtc, maxTopUpAmount, ...watchdog }) => ({
+  .transform(({ maxTopUpWbtc, maxTopUpAmount, maxRepayAmount, ...watchdog }) => ({
     ...watchdog,
-    ...(maxTopUpAmount !== undefined
-      ? { maxTopUpAmount }
-      : maxTopUpWbtc !== undefined
-        ? { maxTopUpAmount: maxTopUpWbtc }
-        : {}),
+    ...(maxRepayAmount !== undefined
+      ? { maxRepayAmount }
+      : maxTopUpAmount !== undefined
+        ? { maxRepayAmount: maxTopUpAmount }
+        : maxTopUpWbtc !== undefined
+          ? { maxRepayAmount: maxTopUpWbtc }
+          : {}),
   }));
 
 export const partialAlertConfigSchema = z

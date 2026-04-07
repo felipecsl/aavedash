@@ -16,7 +16,7 @@ function createConfig(overrides: Partial<WatchdogConfig> = {}): WatchdogConfig {
     targetHF: 1.9,
     minResultingHF: 1.85,
     cooldownMs: 30 * 60 * 1000,
-    maxTopUpAmount: 0.5,
+    maxRepayAmount: 500,
     deadlineSeconds: 300,
     rescueContract: RESCUE_CONTRACT,
     morphoRescueContract: '',
@@ -112,6 +112,7 @@ test('dry-run logs planned atomic rescue and applies cooldown', async () => {
     _provider: unknown,
     _contract: string,
     _user: string,
+    _debtToken: string,
     amount: bigint,
   ) => (amount > 0n ? targetHFWad : 1_500_000_000_000_000_000n);
 
@@ -121,8 +122,8 @@ test('dry-run logs planned atomic rescue and applies cooldown', async () => {
   assert.match(messages[0]!, /Watchdog DRY RUN/);
   const log = watchdog.getLog();
   assert.equal(log[0]?.action, 'dry-run');
-  assert.equal(log[0]?.topUpAmount, 0.025);
-  assert.equal(log[0]?.topUpAssetSymbol, 'WBTC');
+  assert.equal(log[0]?.repayAmount, 2.5);
+  assert.equal(log[0]?.repayAssetSymbol, 'USDC');
 });
 
 test('live mode skips when private key is missing', async () => {

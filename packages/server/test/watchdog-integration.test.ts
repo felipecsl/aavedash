@@ -31,7 +31,7 @@ function createConfig(overrides: Partial<WatchdogConfig> = {}): WatchdogConfig {
     targetHF: 1.9,
     minResultingHF: 1.85,
     cooldownMs: 30 * 60 * 1000,
-    maxTopUpAmount: 0.5,
+    maxRepayAmount: 500,
     deadlineSeconds: 300,
     rescueContract: RESCUE_CONTRACT,
     morphoRescueContract: '',
@@ -48,7 +48,7 @@ function createLoan(overrides: Partial<LoanPosition> = {}): LoanPosition {
     borrowed: [
       {
         symbol: 'USDC',
-        address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+        address: USDC_CONTRACT,
         decimals: 6,
         amount: 1600,
         usdPrice: 1,
@@ -84,15 +84,18 @@ function createLoan(overrides: Partial<LoanPosition> = {}): LoanPosition {
 /**
  * Create a fake provider that intercepts eth_call and responds based on the
  * ABI-encoded function selector in the data payload.
+ * Now checks debt token (USDC) balance/allowance instead of collateral.
  */
 function createMockProvider(opts: {
-  wbtcBalance: bigint;
-  wbtcAllowance: bigint;
+  debtTokenBalance: bigint;
+  debtTokenAllowance: bigint;
   /** Maps amount (bigint) to resulting HF (bigint, in 1e18 wad) */
   previewHF: (amount: bigint) => bigint;
   gasPriceGwei?: number;
   ethBalance?: number;
+  debtTokenAddress?: string;
 }) {
+  const debtToken = opts.debtTokenAddress ?? USDC_CONTRACT;
   const balanceOfSelector = ERC20_INTERFACE.getFunction('balanceOf')!.selector;
   const allowanceSelector = ERC20_INTERFACE.getFunction('allowance')!.selector;
   const previewSelector = RESCUE_INTERFACE.getFunction('previewResultingHF')!.selector;
@@ -101,12 +104,12 @@ function createMockProvider(opts: {
     call: async (tx: { to: string; data: string }) => {
       const selector = tx.data.slice(0, 10);
 
-      if (tx.to.toLowerCase() === WBTC_CONTRACT.toLowerCase()) {
+      if (tx.to.toLowerCase() === debtToken.toLowerCase()) {
         if (selector === balanceOfSelector) {
-          return ERC20_INTERFACE.encodeFunctionResult('balanceOf', [opts.wbtcBalance]);
+          return ERC20_INTERFACE.encodeFunctionResult('balanceOf', [opts.debtTokenBalance]);
         }
         if (selector === allowanceSelector) {
-          return ERC20_INTERFACE.encodeFunctionResult('allowance', [opts.wbtcAllowance]);
+          return ERC20_INTERFACE.encodeFunctionResult('allowance', [opts.debtTokenAllowance]);
         }
       }
 
@@ -159,22 +162,22 @@ function injectProvider(watchdog: Watchdog, provider: ReturnType<typeof createMo
 // ─── findRequiredAmountRaw integration tests ────────────────────────────────
 
 describe('findRequiredAmountRaw (via evaluate)', () => {
-  test('interpolates correct WBTC amount for target HF', async () => {
+  test('interpolates correct USDC repay amount for target HF', async () => {
     const currentHFWad = parseUnits('1.5', 18); // HF at amount=0
-    const maxTopUp = parseUnits('0.5', 8); // 0.5 WBTC = 50_000_000 sats
+    const maxRepay = parseUnits('500', 6); // 500 USDC
 
-    // Linear model: HF(a) = 1.5 + (2.1 - 1.5) * (a / maxTopUp) = 1.5 + 0.6 * a/maxTopUp
-    // For targetHF=1.9: a = maxTopUp * (1.9 - 1.5) / (2.1 - 1.5) = maxTopUp * 2/3
+    // Linear model: HF(a) = 1.5 + (2.1 - 1.5) * (a / maxRepay) = 1.5 + 0.6 * a/maxRepay
+    // For targetHF=1.9: a = maxRepay * (1.9 - 1.5) / (2.1 - 1.5) = maxRepay * 2/3
     const maxHFWad = parseUnits('2.1', 18);
     const slope = maxHFWad - currentHFWad; // 0.6e18
 
     const provider = createMockProvider({
-      wbtcBalance: maxTopUp,
-      wbtcAllowance: maxTopUp,
+      debtTokenBalance: maxRepay,
+      debtTokenAllowance: maxRepay,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
-        // Linear: currentHF + slope * amount / maxTopUp
-        return currentHFWad + (slope * amount) / maxTopUp;
+        // Linear: currentHF + slope * amount / maxRepay
+        return currentHFWad + (slope * amount) / maxRepay;
       },
     });
 
@@ -187,10 +190,10 @@ describe('findRequiredAmountRaw (via evaluate)', () => {
     assert.equal(log.length, 1);
     assert.equal(log[0]?.action, 'dry-run');
 
-    // Expected: ~0.33333334 WBTC (2/3 of 0.5, +1 sat for round-up)
-    const topUp = log[0]!.topUpAmount;
-    assert.ok(topUp > 0.333, `Expected ~0.333 WBTC, got ${topUp}`);
-    assert.ok(topUp < 0.34, `Expected ~0.333 WBTC, got ${topUp}`);
+    // Expected: ~333.33 USDC (2/3 of 500, +1 unit for round-up)
+    const repay = log[0]!.repayAmount;
+    assert.ok(repay > 333, `Expected ~333 USDC, got ${repay}`);
+    assert.ok(repay < 340, `Expected ~333 USDC, got ${repay}`);
 
     // Projected HF should be >= targetHF (1.9)
     assert.ok(log[0]!.projectedHF >= 1.9, `Projected HF ${log[0]!.projectedHF} < 1.9`);
@@ -198,19 +201,18 @@ describe('findRequiredAmountRaw (via evaluate)', () => {
 
   test('falls back to minResultingHF when targetHF is unreachable', async () => {
     const currentHFWad = parseUnits('1.5', 18);
-    const maxTopUp = parseUnits('0.1', 8); // only 0.1 WBTC available
+    const maxRepay = parseUnits('100', 6); // only 100 USDC available
 
-    // With 0.1 WBTC max, HF only reaches 1.8 — below targetHF=1.9 but above minResultingHF=1.85?
-    // Actually we need: max HF with full amount < targetHF(1.9), but max HF >= minResultingHF(1.85)
-    const maxHFWad = parseUnits('1.88', 18); // can't reach 1.9, but can reach 1.85
+    // With 100 USDC max, HF only reaches 1.88 — below targetHF=1.9 but above minResultingHF=1.85
+    const maxHFWad = parseUnits('1.88', 18);
 
     const provider = createMockProvider({
-      wbtcBalance: maxTopUp,
-      wbtcAllowance: maxTopUp,
+      debtTokenBalance: maxRepay,
+      debtTokenAllowance: maxRepay,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
         const slope = maxHFWad - currentHFWad; // 0.38e18
-        return currentHFWad + (slope * amount) / maxTopUp;
+        return currentHFWad + (slope * amount) / maxRepay;
       },
     });
 
@@ -224,25 +226,25 @@ describe('findRequiredAmountRaw (via evaluate)', () => {
     assert.equal(log[0]?.action, 'dry-run');
 
     // Should have used minResultingHF=1.85 as fallback target
-    // amount = maxTopUp * (1.85 - 1.5) / (1.88 - 1.5) = maxTopUp * 0.35/0.38 ≈ 0.0921 WBTC
-    const topUp = log[0]!.topUpAmount;
-    assert.ok(topUp > 0.09, `Expected ~0.092 WBTC, got ${topUp}`);
-    assert.ok(topUp < 0.1, `Expected ~0.092 WBTC, got ${topUp}`);
+    // amount = maxRepay * (1.85 - 1.5) / (1.88 - 1.5) = maxRepay * 0.35/0.38 ≈ 92.1 USDC
+    const repay = log[0]!.repayAmount;
+    assert.ok(repay > 90, `Expected ~92 USDC, got ${repay}`);
+    assert.ok(repay < 100, `Expected ~92 USDC, got ${repay}`);
   });
 
   test('skips when even maxAmount cannot reach minResultingHF', async () => {
     const currentHFWad = parseUnits('1.5', 18);
-    const maxTopUp = parseUnits('0.01', 8); // tiny amount
+    const maxRepay = parseUnits('10', 6); // tiny amount
 
-    // Even full 0.01 WBTC only reaches 1.52 — way below minResultingHF=1.85
+    // Even full 10 USDC only reaches 1.52 — way below minResultingHF=1.85
     const provider = createMockProvider({
-      wbtcBalance: maxTopUp,
-      wbtcAllowance: maxTopUp,
+      debtTokenBalance: maxRepay,
+      debtTokenAllowance: maxRepay,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
         const maxHFWad = parseUnits('1.52', 18);
         const slope = maxHFWad - currentHFWad;
-        return currentHFWad + (slope * amount) / maxTopUp;
+        return currentHFWad + (slope * amount) / maxRepay;
       },
     });
 
@@ -254,21 +256,21 @@ describe('findRequiredAmountRaw (via evaluate)', () => {
     const log = watchdog.getLog();
     assert.equal(log.length, 1);
     assert.equal(log[0]?.action, 'skipped');
-    assert.match(log[0]?.reason ?? '', /Insufficient WBTC to achieve minimum resulting HF/);
+    assert.match(log[0]?.reason ?? '', /Insufficient USDC to achieve minimum resulting HF/);
     assert.equal(messages.length, 1);
     assert.match(messages[0]!, /Rescue not feasible/);
   });
 
   test('skips with 0 amount when on-chain HF already meets target', async () => {
     const currentHFWad = parseUnits('2.0', 18); // already above targetHF=1.9
-    const maxTopUp = parseUnits('0.5', 8);
+    const maxRepay = parseUnits('500', 6);
 
     const provider = createMockProvider({
-      wbtcBalance: maxTopUp,
-      wbtcAllowance: maxTopUp,
+      debtTokenBalance: maxRepay,
+      debtTokenAllowance: maxRepay,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
-        return currentHFWad + (parseUnits('0.5', 18) * amount) / maxTopUp;
+        return currentHFWad + (parseUnits('0.5', 18) * amount) / maxRepay;
       },
     });
 
@@ -283,17 +285,17 @@ describe('findRequiredAmountRaw (via evaluate)', () => {
     const log = watchdog.getLog();
     assert.equal(log.length, 1);
     assert.equal(log[0]?.action, 'skipped');
-    assert.match(log[0]?.reason ?? '', /Insufficient WBTC/);
+    assert.match(log[0]?.reason ?? '', /Insufficient USDC/);
   });
 });
 
 // ─── Full evaluate integration tests with mock provider ─────────────────────
 
 describe('evaluate integration with mock provider', () => {
-  test('skips when WBTC balance is zero', async () => {
+  test('skips when USDC balance is zero', async () => {
     const provider = createMockProvider({
-      wbtcBalance: 0n,
-      wbtcAllowance: parseUnits('1', 8),
+      debtTokenBalance: 0n,
+      debtTokenAllowance: parseUnits('1000', 6),
       previewHF: () => parseUnits('1.5', 18),
     });
 
@@ -304,15 +306,15 @@ describe('evaluate integration with mock provider', () => {
 
     const log = watchdog.getLog();
     assert.equal(log[0]?.action, 'skipped');
-    assert.match(log[0]?.reason ?? '', /No available WBTC/);
+    assert.match(log[0]?.reason ?? '', /No available USDC/);
     assert.equal(messages.length, 1);
-    assert.match(messages[0]!, /WBTC unavailable/);
+    assert.match(messages[0]!, /USDC unavailable/);
   });
 
-  test('skips when WBTC allowance is zero', async () => {
+  test('skips when USDC allowance is zero', async () => {
     const provider = createMockProvider({
-      wbtcBalance: parseUnits('1', 8),
-      wbtcAllowance: 0n,
+      debtTokenBalance: parseUnits('1000', 6),
+      debtTokenAllowance: 0n,
       previewHF: () => parseUnits('1.5', 18),
     });
 
@@ -323,31 +325,31 @@ describe('evaluate integration with mock provider', () => {
 
     const log = watchdog.getLog();
     assert.equal(log[0]?.action, 'skipped');
-    assert.match(log[0]?.reason ?? '', /No available WBTC/);
+    assert.match(log[0]?.reason ?? '', /No available USDC/);
     assert.equal(messages.length, 1);
-    assert.match(messages[0]!, /WBTC unavailable/);
+    assert.match(messages[0]!, /USDC unavailable/);
   });
 
-  test('uses min of balance, allowance, and maxTopUp as available amount', async () => {
-    const balance = parseUnits('0.3', 8); // 30_000_000 sats — this is the limiting factor
-    const allowance = parseUnits('1.0', 8); // 100_000_000 sats
+  test('uses min of balance, allowance, and maxRepay as available amount', async () => {
+    const balance = parseUnits('300', 6); // 300 USDC — this is the limiting factor
+    const allowance = parseUnits('1000', 6);
     const currentHFWad = parseUnits('1.5', 18);
 
-    // With balance as limit (0.3 WBTC), max achievable HF = 2.1
+    // With balance as limit (300 USDC), max achievable HF = 2.1
     const maxHFAtBalance = parseUnits('2.1', 18);
 
     const provider = createMockProvider({
-      wbtcBalance: balance,
-      wbtcAllowance: allowance,
+      debtTokenBalance: balance,
+      debtTokenAllowance: allowance,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
-        // Linear: 1.5 + 0.6 * amount / 0.3_WBTC
+        // Linear: 1.5 + 0.6 * amount / 300_USDC
         const slope = maxHFAtBalance - currentHFWad;
         return currentHFWad + (slope * amount) / balance;
       },
     });
 
-    const { watchdog } = createWatchdog(createConfig({ dryRun: true, maxTopUpAmount: 0.5 }));
+    const { watchdog } = createWatchdog(createConfig({ dryRun: true, maxRepayAmount: 500 }));
     injectProvider(watchdog, provider);
 
     await watchdog.evaluate(createLoan(), WALLET);
@@ -355,35 +357,24 @@ describe('evaluate integration with mock provider', () => {
     const log = watchdog.getLog();
     assert.equal(log[0]?.action, 'dry-run');
 
-    // amount = balance * (1.9 - 1.5) / (2.1 - 1.5) = 0.3 * 2/3 = 0.2 WBTC
-    const topUp = log[0]!.topUpAmount;
-    assert.ok(topUp > 0.19, `Expected ~0.2 WBTC, got ${topUp}`);
-    assert.ok(topUp < 0.21, `Expected ~0.2 WBTC, got ${topUp}`);
+    // amount = balance * (1.9 - 1.5) / (2.1 - 1.5) = 300 * 2/3 = 200 USDC
+    const repay = log[0]!.repayAmount;
+    assert.ok(repay > 199, `Expected ~200 USDC, got ${repay}`);
+    assert.ok(repay < 210, `Expected ~200 USDC, got ${repay}`);
   });
 
   test('skips when projected HF is below minResultingHF', async () => {
-    // Simulate non-linear reality: findRequiredAmountRaw succeeds (linear model
-    // predicts target is reachable), but the final previewResultingHF call in
-    // evaluate() returns below minHFWad.
-    //
-    // Call sequence in evaluate():
-    //   findRequiredAmountRaw for targetHF:
-    //     1. previewHF(0) = 1.5          — currentHF
-    //     2. previewHF(maxAmount) = 2.1   — maxHF (optimistic linear model)
-    //     3. previewHF(interpolated) = 1.9 — verification (passes targetHF check)
-    //   Then evaluate() calls previewHF(interpolated) again for final check:
-    //     4. previewHF(interpolated) = 1.8 — now non-linear reality, below minResultingHF
-    const maxTopUp = parseUnits('0.5', 8);
+    const maxRepay = parseUnits('500', 6);
     const currentHFWad = parseUnits('1.5', 18);
     let previewCallCount = 0;
 
     const provider = createMockProvider({
-      wbtcBalance: maxTopUp,
-      wbtcAllowance: maxTopUp,
+      debtTokenBalance: maxRepay,
+      debtTokenAllowance: maxRepay,
       previewHF: (amount: bigint) => {
         previewCallCount++;
         if (amount === 0n) return currentHFWad;
-        if (amount === maxTopUp) return parseUnits('2.1', 18);
+        if (amount === maxRepay) return parseUnits('2.1', 18);
         // Call 3 = verification inside findRequiredAmountRaw → return value that passes
         if (previewCallCount <= 3) return parseUnits('1.9', 18);
         // Call 4 = final check in evaluate() → return low value (non-linear reality)
@@ -402,12 +393,12 @@ describe('evaluate integration with mock provider', () => {
   });
 
   test('live mode skips when gas price exceeds max', async () => {
-    const maxTopUp = parseUnits('0.5', 8);
+    const maxRepay = parseUnits('500', 6);
     const currentHFWad = parseUnits('1.5', 18);
 
     const provider = createMockProvider({
-      wbtcBalance: maxTopUp,
-      wbtcAllowance: maxTopUp,
+      debtTokenBalance: maxRepay,
+      debtTokenAllowance: maxRepay,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
         return parseUnits('2.0', 18);
@@ -429,12 +420,12 @@ describe('evaluate integration with mock provider', () => {
   });
 
   test('live mode skips when ETH balance is insufficient for gas', async () => {
-    const maxTopUp = parseUnits('0.5', 8);
+    const maxRepay = parseUnits('500', 6);
     const currentHFWad = parseUnits('1.5', 18);
 
     const provider = createMockProvider({
-      wbtcBalance: maxTopUp,
-      wbtcAllowance: maxTopUp,
+      debtTokenBalance: maxRepay,
+      debtTokenAllowance: maxRepay,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
         return parseUnits('2.0', 18);
@@ -477,8 +468,8 @@ describe('evaluate integration with mock provider', () => {
     });
 
     const provider = createMockProvider({
-      wbtcBalance: parseUnits('1', 8),
-      wbtcAllowance: parseUnits('1', 8),
+      debtTokenBalance: parseUnits('1000', 6),
+      debtTokenAllowance: parseUnits('1000', 6),
       previewHF: () => {
         throw new Error('Should not be called');
       },
@@ -495,8 +486,8 @@ describe('evaluate integration with mock provider', () => {
 
   test('does not trigger when watchdog is disabled', async () => {
     const provider = createMockProvider({
-      wbtcBalance: parseUnits('1', 8),
-      wbtcAllowance: parseUnits('1', 8),
+      debtTokenBalance: parseUnits('1000', 6),
+      debtTokenAllowance: parseUnits('1000', 6),
       previewHF: () => {
         throw new Error('Should not be called');
       },
@@ -511,11 +502,11 @@ describe('evaluate integration with mock provider', () => {
   });
 
   test('no notification sent when getChatId returns null', async () => {
-    const maxTopUp = parseUnits('0.5', 8);
+    const maxRepay = parseUnits('500', 6);
 
     const provider = createMockProvider({
-      wbtcBalance: maxTopUp,
-      wbtcAllowance: maxTopUp,
+      debtTokenBalance: maxRepay,
+      debtTokenAllowance: maxRepay,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return parseUnits('1.5', 18);
         return parseUnits('2.0', 18);
@@ -606,8 +597,8 @@ function createMorphoLoan(overrides: Partial<LoanPosition> = {}): LoanPosition {
 }
 
 function createMorphoMockProvider(opts: {
-  collateralBalance: bigint;
-  collateralAllowance: bigint;
+  debtTokenBalance: bigint;
+  debtTokenAllowance: bigint;
   previewHF: (amount: bigint) => bigint;
   gasPriceGwei?: number;
   ethBalance?: number;
@@ -620,13 +611,13 @@ function createMorphoMockProvider(opts: {
     call: async (tx: { to: string; data: string }) => {
       const selector = tx.data.slice(0, 10);
 
-      // Collateral token (WETH) calls
-      if (tx.to.toLowerCase() === WETH_CONTRACT.toLowerCase()) {
+      // Debt token (USDC) calls
+      if (tx.to.toLowerCase() === USDC_CONTRACT.toLowerCase()) {
         if (selector === balanceOfSelector) {
-          return ERC20_INTERFACE.encodeFunctionResult('balanceOf', [opts.collateralBalance]);
+          return ERC20_INTERFACE.encodeFunctionResult('balanceOf', [opts.debtTokenBalance]);
         }
         if (selector === allowanceSelector) {
-          return ERC20_INTERFACE.encodeFunctionResult('allowance', [opts.collateralAllowance]);
+          return ERC20_INTERFACE.encodeFunctionResult('allowance', [opts.debtTokenAllowance]);
         }
       }
 
@@ -652,18 +643,18 @@ function createMorphoMockProvider(opts: {
 }
 
 describe('Morpho rescue via evaluate', () => {
-  test('dry-run for Morpho loan computes correct collateral top-up', async () => {
+  test('dry-run for Morpho loan computes correct debt repay amount', async () => {
     const currentHFWad = parseUnits('1.5', 18);
-    const maxTopUp = parseUnits('1', 18); // 1 WETH (18 decimals)
+    const maxRepay = parseUnits('500', 6); // 500 USDC
     const maxHFWad = parseUnits('2.1', 18);
     const slope = maxHFWad - currentHFWad;
 
     const provider = createMorphoMockProvider({
-      collateralBalance: maxTopUp,
-      collateralAllowance: maxTopUp,
+      debtTokenBalance: maxRepay,
+      debtTokenAllowance: maxRepay,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
-        return currentHFWad + (slope * amount) / maxTopUp;
+        return currentHFWad + (slope * amount) / maxRepay;
       },
     });
 
@@ -671,7 +662,7 @@ describe('Morpho rescue via evaluate', () => {
       createConfig({
         dryRun: true,
         morphoRescueContract: MORPHO_RESCUE_CONTRACT,
-        maxTopUpAmount: 1.0, // 1 WETH max (18-decimal collateral needs higher limit)
+        maxRepayAmount: 500,
       }),
     );
     injectProvider(watchdog, provider);
@@ -695,10 +686,10 @@ describe('Morpho rescue via evaluate', () => {
     assert.match(log[0]?.reason ?? '', /Invalid or missing morphoRescueContract/);
   });
 
-  test('Morpho rescue does not require a separate authorization check', async () => {
+  test('Morpho rescue dry-run sends notification', async () => {
     const provider = createMorphoMockProvider({
-      collateralBalance: parseUnits('1', 18),
-      collateralAllowance: parseUnits('1', 18),
+      debtTokenBalance: parseUnits('1000', 6),
+      debtTokenAllowance: parseUnits('1000', 6),
       previewHF: (amount: bigint) =>
         amount === 0n ? parseUnits('1.5', 18) : parseUnits('1.9', 18),
     });
@@ -731,16 +722,16 @@ describe('Morpho rescue via evaluate', () => {
     const log = watchdog.getLog();
     assert.equal(log.length, 1);
     assert.equal(log[0]?.action, 'skipped');
-    assert.match(log[0]?.reason ?? '', /missing collateral or market params/);
+    assert.match(log[0]?.reason ?? '', /missing debt token or market params/);
   });
 
-  test('Morpho rescue uses correct collateral token (not WBTC)', async () => {
+  test('Morpho rescue uses debt token (USDC) not collateral token', async () => {
     const currentHFWad = parseUnits('1.5', 18);
-    const maxTopUp = parseUnits('1', 18); // 1 WETH
+    const maxRepay = parseUnits('500', 6);
 
     const provider = createMorphoMockProvider({
-      collateralBalance: maxTopUp,
-      collateralAllowance: maxTopUp,
+      debtTokenBalance: maxRepay,
+      debtTokenAllowance: maxRepay,
       previewHF: (amount: bigint) => {
         if (amount === 0n) return currentHFWad;
         return parseUnits('2.0', 18);
@@ -756,9 +747,10 @@ describe('Morpho rescue via evaluate', () => {
 
     const log = watchdog.getLog();
     assert.equal(log[0]?.action, 'dry-run');
-    // Verify the notification mentions WETH not WBTC
+    // Verify the notification mentions USDC (debt token) in the repay line
     assert.equal(messages.length, 1);
-    assert.match(messages[0]!, /WETH/);
-    assert.ok(!messages[0]!.includes('WBTC'), 'Should use WETH not WBTC for Morpho rescue');
+    assert.match(messages[0]!, /USDC/);
+    // The "Would repay" line should reference USDC, not WETH
+    assert.match(messages[0]!, /Would repay.*USDC/);
   });
 });
