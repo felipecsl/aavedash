@@ -52,6 +52,11 @@ type WalletNotification = {
   message: string;
 };
 
+type ReminderDigestEntry = {
+  state: LoanAlertState;
+  message: string;
+};
+
 export class Monitor {
   private states = new Map<string, LoanAlertState>();
   private timerId: ReturnType<typeof setInterval> | null = null;
@@ -218,6 +223,8 @@ export class Monitor {
     const now = Date.now();
     const activeStateKeys = new Set<string>();
     const pendingNotifications: WalletNotification[] = [];
+    const reminderDigestEntries: ReminderDigestEntry[] = [];
+    let shouldSendReminderDigest = false;
 
     for (const loan of loans) {
       const metrics = computeLoanMetrics(loan, DEFAULT_R_DEPLOY);
@@ -273,6 +280,13 @@ export class Monitor {
       existing.netEarnUsd = metrics.netEarnUSD;
       existing.currentZone = zone;
 
+      if (zone.name !== 'safe' && existing.stuckSince) {
+        reminderDigestEntries.push({
+          state: existing,
+          message: this.formatReminder(loan, metrics, zone, now - existing.stuckSince),
+        });
+      }
+
       if (zone.name === previousZone.name) {
         existing.consecutiveChecks++;
 
@@ -283,11 +297,7 @@ export class Monitor {
             stuckDuration >= config.polling.reminderIntervalMs &&
             now - existing.lastNotifiedAt >= config.polling.reminderIntervalMs
           ) {
-            pendingNotifications.push({
-              kind: 'reminder',
-              message: this.formatReminder(loan, metrics, zone, stuckDuration),
-            });
-            existing.lastNotifiedAt = now;
+            shouldSendReminderDigest = true;
           }
         }
         continue;
@@ -326,6 +336,16 @@ export class Monitor {
           existing.lastNotifiedZone = zone.name;
           existing.lastNotifiedAt = now;
         }
+      }
+    }
+
+    if (shouldSendReminderDigest) {
+      for (const entry of reminderDigestEntries) {
+        pendingNotifications.push({
+          kind: 'reminder',
+          message: entry.message,
+        });
+        entry.state.lastNotifiedAt = now;
       }
     }
 

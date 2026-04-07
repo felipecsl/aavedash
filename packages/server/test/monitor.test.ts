@@ -203,3 +203,109 @@ test('groups multiple loan alerts for the same wallet into one telegram message'
     globalThis.fetch = originalFetch;
   }
 });
+
+test('wallet reminder digest includes all non-safe loans when any loan is due', async () => {
+  const sentMessages: Array<{ chatId: string; text: string }> = [];
+  const telegram = {
+    sendMessage: async (chatId: string, text: string) => {
+      sentMessages.push({ chatId, text });
+      return true;
+    },
+  } as unknown as TelegramClient;
+
+  const monitor = new Monitor(telegram, createConfig, undefined, undefined, RPC_URL, undefined);
+  (monitor.watchdog as { evaluate: (loan: unknown, wallet: string) => Promise<void> }).evaluate =
+    async () => {};
+
+  const originalFetch = globalThis.fetch;
+
+  try {
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+
+      if (href.includes('coingecko.com/api/v3/simple/price')) {
+        return new Response(
+          JSON.stringify({
+            ethereum: { usd: 2000 },
+            weth: { usd: 2000 },
+            'usd-coin': { usd: 1 },
+          }),
+          { status: 200 },
+        );
+      }
+
+      if (href === RPC_URL) {
+        const requests = JSON.parse(String(init?.body)) as Array<{ id: number }>;
+        return new Response(
+          JSON.stringify(requests.map((request) => ({ id: request.id, result: '0x0' }))),
+          { status: 200 },
+        );
+      }
+
+      if (href.includes('api.morpho.org/graphql')) {
+        return new Response(JSON.stringify(createMorphoPayload(1000)), { status: 200 });
+      }
+
+      if (
+        href.includes('aave/protocol-v3') ||
+        href.includes('Cd2gEDVeqnjBn1hSeqFMitw8Q1iiyV9FYUZkLNRcL87g')
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              userReserves: createAaveReserves(800),
+            },
+          }),
+          { status: 200 },
+        );
+      }
+
+      if (href.includes('5vxMbXRhG1oQr55MWC5j6qg78waWujx1wjeuEWDA6j3')) {
+        return new Response(JSON.stringify({ data: { userReserves: [] } }), { status: 200 });
+      }
+
+      throw new Error(`Unhandled fetch URL: ${href}`);
+    }) as typeof fetch;
+
+    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
+      notify: true,
+    });
+    assert.equal(sentMessages.length, 0);
+
+    const states = (
+      monitor as unknown as {
+        states: Map<
+          string,
+          {
+            stuckSince: number | null;
+            lastNotifiedAt: number;
+          }
+        >;
+      }
+    ).states;
+    const now = Date.now();
+    const aaveState = states.get(`${WALLET}-proto_mainnet_v3`);
+    const morphoState = states.get(`${WALLET}-morpho-loan-1`);
+
+    assert.ok(aaveState);
+    assert.ok(morphoState);
+
+    aaveState.stuckSince = now - 60 * 60 * 1000;
+    morphoState.stuckSince = now - 50 * 60 * 1000;
+    aaveState.lastNotifiedAt = now - 31 * 60 * 1000;
+    morphoState.lastNotifiedAt = now - 10 * 60 * 1000;
+
+    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
+      notify: true,
+    });
+
+    assert.equal(sentMessages.length, 1);
+    assert.match(sentMessages[0]!.text, /<b>Loan Alerts<\/b>/);
+    assert.match(sentMessages[0]!.text, /Reminder 1/);
+    assert.match(sentMessages[0]!.text, /Reminder 2/);
+    assert.match(sentMessages[0]!.text, /Market: proto_mainnet_v3/);
+    assert.match(sentMessages[0]!.text, /Market: morpho_WETH_USDC/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
