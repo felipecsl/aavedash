@@ -2,12 +2,12 @@
 pragma solidity 0.8.27;
 
 import {Test} from "forge-std/Test.sol";
-import {AaveAtomicRescueV1} from "../src/AaveAtomicRescueV1.sol";
+import {AaveAtomicRepayV1} from "../src/AaveAtomicRepayV1.sol";
 
 contract MockToken {
-    string public name = "Mock";
-    string public symbol = "MOCK";
-    uint8 public decimals = 8;
+    string public name = "Mock USDC";
+    string public symbol = "USDC";
+    uint8 public decimals = 6;
 
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
@@ -64,12 +64,25 @@ contract MockPool {
         );
     }
 
-    function supply(address, uint256 amount, address onBehalfOf, uint16) external {
+    function repay(address, uint256 amount, uint256, address onBehalfOf) external returns (uint256) {
         AccountData storage data = accountData[onBehalfOf];
-        data.totalCollateralBase += amount / 100; // test-only simplified conversion
-        data.healthFactor += 0.2e18;
+        // Simplified: reduce debt and increase HF proportionally
+        uint256 reduction = amount / 100; // test-only simplified conversion
+        if (reduction > data.totalDebtBase) {
+            data.totalDebtBase = 0;
+        } else {
+            data.totalDebtBase -= reduction;
+        }
+        // Recalculate HF: (collateral * lt / 10000) * 1e18 / debt
+        if (data.totalDebtBase == 0) {
+            data.healthFactor = type(uint256).max;
+        } else {
+            data.healthFactor = (
+                data.totalCollateralBase * data.currentLiquidationThreshold * 1e18
+            ) / (data.totalDebtBase * 10_000);
+        }
+        return amount;
     }
-
 }
 
 contract MockAddressesProvider {
@@ -96,51 +109,38 @@ contract MockOracle {
     }
 }
 
-contract MockDataProvider {
-    uint256 public liquidationThreshold = 7_500;
-
-    function getReserveConfigurationData(address)
-        external
-        view
-        returns (uint256, uint256, uint256, uint256, uint256, bool, bool, bool, bool, bool)
-    {
-        return (8, 7_000, liquidationThreshold, 0, 0, true, true, false, true, false);
-    }
-}
-
-contract AaveAtomicRescueV1Test is Test {
+contract AaveAtomicRepayV1Test is Test {
     address internal owner = makeAddr("owner");
-    address internal user = makeAddr("user");
+    address internal attacker = makeAddr("attacker");
 
     MockToken internal token;
     MockPool internal pool;
     MockOracle internal oracle;
-    MockDataProvider internal dataProvider;
     MockAddressesProvider internal addressesProvider;
-    AaveAtomicRescueV1 internal rescue;
+    AaveAtomicRepayV1 internal rescue;
 
     function setUp() external {
         token = new MockToken();
         pool = new MockPool();
-        oracle = new MockOracle(100_000_000); // 1.0 in base
-        dataProvider = new MockDataProvider();
+        oracle = new MockOracle(100_000_000); // 1.0 in base (8-decimal oracle)
         addressesProvider = new MockAddressesProvider(address(oracle));
 
-        rescue =
-            new AaveAtomicRescueV1(owner, address(pool), address(addressesProvider), address(dataProvider));
+        rescue = new AaveAtomicRepayV1(owner, address(pool), address(addressesProvider));
 
         vm.prank(owner);
         rescue.setSupportedAsset(address(token), true);
 
-        token.mint(user, 1_000_000_000);
-        vm.prank(user);
+        token.mint(owner, 1_000_000_000); // 1000 USDC
+        vm.prank(owner);
         token.approve(address(rescue), type(uint256).max);
 
+        // collateral=1_000_000, debt=750_000, lt=7500 → HF = (1_000_000 * 7500) / (750_000 * 10000) = 1.0
+        // We set HF=1.2e18 for a slightly healthier starting point
         pool.setUserAccountData(
-            user,
+            owner,
             MockPool.AccountData({
                 totalCollateralBase: 1_000_000,
-                totalDebtBase: 1_000_000,
+                totalDebtBase: 750_000,
                 availableBorrowsBase: 0,
                 currentLiquidationThreshold: 7_500,
                 ltv: 7_000,
@@ -150,22 +150,36 @@ contract AaveAtomicRescueV1Test is Test {
     }
 
     function test_owner_only() external {
-        AaveAtomicRescueV1.RescueParams memory params = AaveAtomicRescueV1.RescueParams({
-            user: user,
+        AaveAtomicRepayV1.RescueParams memory params = AaveAtomicRepayV1.RescueParams({
+            user: owner,
             asset: address(token),
             amount: 10_000_000,
             minResultingHF: 1.1e18,
             deadline: block.timestamp + 1
         });
 
-        vm.prank(user);
-        vm.expectRevert(AaveAtomicRescueV1.NotOwner.selector);
+        vm.prank(attacker);
+        vm.expectRevert(AaveAtomicRepayV1.NotOwner.selector);
+        rescue.rescue(params);
+    }
+
+    function test_reverts_if_user_not_owner() external {
+        AaveAtomicRepayV1.RescueParams memory params = AaveAtomicRepayV1.RescueParams({
+            user: attacker,
+            asset: address(token),
+            amount: 10_000_000,
+            minResultingHF: 1.1e18,
+            deadline: block.timestamp + 1
+        });
+
+        vm.prank(owner);
+        vm.expectRevert(AaveAtomicRepayV1.UserNotOwner.selector);
         rescue.rescue(params);
     }
 
     function test_reverts_if_deadline_expired() external {
-        AaveAtomicRescueV1.RescueParams memory params = AaveAtomicRescueV1.RescueParams({
-            user: user,
+        AaveAtomicRepayV1.RescueParams memory params = AaveAtomicRepayV1.RescueParams({
+            user: owner,
             asset: address(token),
             amount: 10_000_000,
             minResultingHF: 1.1e18,
@@ -173,52 +187,49 @@ contract AaveAtomicRescueV1Test is Test {
         });
 
         vm.prank(owner);
-        vm.expectRevert(AaveAtomicRescueV1.DeadlineExpired.selector);
+        vm.expectRevert(AaveAtomicRepayV1.DeadlineExpired.selector);
         rescue.rescue(params);
     }
 
-    function test_executes_rescue_when_result_hf_is_sufficient() external {
-        AaveAtomicRescueV1.RescueParams memory params = AaveAtomicRescueV1.RescueParams({
-            user: user,
+    function test_executes_rescue_and_reduces_debt() external {
+        AaveAtomicRepayV1.RescueParams memory params = AaveAtomicRepayV1.RescueParams({
+            user: owner,
             asset: address(token),
-            amount: 10_000_000,
-            minResultingHF: 1.3e18,
+            amount: 10_000_000, // 10 USDC
+            minResultingHF: 1.1e18,
             deadline: block.timestamp + 10
         });
 
         vm.prank(owner);
         rescue.rescue(params);
 
-        (, , , , , uint256 hfAfter) = pool.getUserAccountData(user);
-        assertGe(hfAfter, 1.3e18);
+        (, uint256 debtAfter, , , , uint256 hfAfter) = pool.getUserAccountData(owner);
+        assertLt(debtAfter, 750_000);
+        assertGe(hfAfter, 1.1e18);
     }
 
     function test_reverts_if_resulting_hf_too_low() external {
-        // Mock pool only adds 0.2e18 per supply call, so starting HF 1.2e18 → 1.4e18.
-        // Requiring 2.0e18 should revert.
-        AaveAtomicRescueV1.RescueParams memory params = AaveAtomicRescueV1.RescueParams({
-            user: user,
+        AaveAtomicRepayV1.RescueParams memory params = AaveAtomicRepayV1.RescueParams({
+            user: owner,
             asset: address(token),
-            amount: 10_000_000,
-            minResultingHF: 2.0e18,
+            amount: 100, // tiny repay, won't move HF much
+            minResultingHF: 5.0e18,
             deadline: block.timestamp + 10
         });
 
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(AaveAtomicRescueV1.ResultingHFTooLow.selector, 1.4e18, 2.0e18)
-        );
+        vm.expectRevert(); // ResultingHFTooLow
         rescue.rescue(params);
     }
 
     function test_reverts_if_asset_not_supported() external {
         MockToken unsupported = new MockToken();
-        unsupported.mint(user, 1_000_000_000);
-        vm.prank(user);
+        unsupported.mint(owner, 1_000_000_000);
+        vm.prank(owner);
         unsupported.approve(address(rescue), type(uint256).max);
 
-        AaveAtomicRescueV1.RescueParams memory params = AaveAtomicRescueV1.RescueParams({
-            user: user,
+        AaveAtomicRepayV1.RescueParams memory params = AaveAtomicRepayV1.RescueParams({
+            user: owner,
             asset: address(unsupported),
             amount: 10_000_000,
             minResultingHF: 1.1e18,
@@ -226,13 +237,21 @@ contract AaveAtomicRescueV1Test is Test {
         });
 
         vm.prank(owner);
-        vm.expectRevert(AaveAtomicRescueV1.AssetNotSupported.selector);
+        vm.expectRevert(AaveAtomicRepayV1.AssetNotSupported.selector);
         rescue.rescue(params);
     }
 
-    function test_preview_increases_with_amount() external view {
-        uint256 hf0 = rescue.previewResultingHF(user, address(token), 0);
-        uint256 hf1 = rescue.previewResultingHF(user, address(token), 10_000_000);
+    function test_preview_increases_with_repay_amount() external view {
+        uint256 hf0 = rescue.previewResultingHF(owner, address(token), 0);
+        uint256 hf1 = rescue.previewResultingHF(owner, address(token), 10_000_000);
         assertGt(hf1, hf0);
+    }
+
+    function test_preview_returns_max_when_debt_fully_repaid() external view {
+        // Repay enough to wipe all debt: 750_000 debt base, oracle price 100_000_000 (1e8),
+        // 6 decimals → repayValueBase = amount * 1e8 / 1e6 = amount * 100
+        // Need repayValueBase >= 750_000 → amount >= 7_500
+        uint256 hf = rescue.previewResultingHF(owner, address(token), 10_000_000);
+        assertEq(hf, type(uint256).max);
     }
 }

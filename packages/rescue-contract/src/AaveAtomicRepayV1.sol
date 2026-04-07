@@ -12,7 +12,9 @@ interface IERC20Metadata {
 }
 
 interface IAavePool {
-    function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external;
+    function repay(address asset, uint256 amount, uint256 interestRateMode, address onBehalfOf)
+        external
+        returns (uint256);
 
     function getUserAccountData(address user)
         external
@@ -35,25 +37,7 @@ interface IAaveOracle {
     function getAssetPrice(address asset) external view returns (uint256);
 }
 
-interface IAaveProtocolDataProvider {
-    function getReserveConfigurationData(address asset)
-        external
-        view
-        returns (
-            uint256 decimals,
-            uint256 ltv,
-            uint256 liquidationThreshold,
-            uint256 liquidationBonus,
-            uint256 reserveFactor,
-            bool usageAsCollateralEnabled,
-            bool borrowingEnabled,
-            bool stableBorrowRateEnabled,
-            bool isActive,
-            bool isFrozen
-        );
-}
-
-contract AaveAtomicRescueV1 {
+contract AaveAtomicRepayV1 {
     struct RescueParams {
         address user;
         address asset;
@@ -67,6 +51,7 @@ contract AaveAtomicRescueV1 {
     error AssetNotSupported();
     error InvalidAddress();
     error InvalidAmount();
+    error UserNotOwner();
     error ResultingHFTooLow(uint256 actual, uint256 minimum);
     error TokenTransferFailed();
     error TokenApproveFailed();
@@ -84,10 +69,10 @@ contract AaveAtomicRescueV1 {
 
     uint256 private constant BPS_DENOMINATOR = 10_000;
     uint256 private constant WAD = 1e18;
+    uint256 private constant VARIABLE_RATE_MODE = 2;
 
     address public owner;
     IAavePool public immutable pool;
-    IAaveProtocolDataProvider public immutable dataProvider;
     IAaveOracle public immutable oracle;
 
     mapping(address => bool) public supportedAsset;
@@ -97,17 +82,13 @@ contract AaveAtomicRescueV1 {
         _;
     }
 
-    constructor(address owner_, address pool_, address addressesProvider_, address dataProvider_) {
-        if (
-            owner_ == address(0) || pool_ == address(0) || addressesProvider_ == address(0)
-                || dataProvider_ == address(0)
-        ) {
+    constructor(address owner_, address pool_, address addressesProvider_) {
+        if (owner_ == address(0) || pool_ == address(0) || addressesProvider_ == address(0)) {
             revert InvalidAddress();
         }
 
         owner = owner_;
         pool = IAavePool(pool_);
-        dataProvider = IAaveProtocolDataProvider(dataProvider_);
         oracle = IAaveOracle(IAaveAddressesProvider(addressesProvider_).getPriceOracle());
 
         emit OwnershipTransferred(address(0), owner_);
@@ -126,9 +107,9 @@ contract AaveAtomicRescueV1 {
     }
 
     function rescue(RescueParams calldata params) external onlyOwner {
+        if (params.user != owner) revert UserNotOwner();
         if (params.deadline < block.timestamp) revert DeadlineExpired();
         if (!supportedAsset[params.asset]) revert AssetNotSupported();
-        if (params.user == address(0)) revert InvalidAddress();
         if (params.amount == 0) revert InvalidAmount();
 
         (, , , , , uint256 hfBefore) = pool.getUserAccountData(params.user);
@@ -136,7 +117,7 @@ contract AaveAtomicRescueV1 {
         _transferIn(params.asset, params.user, params.amount);
         _forceApprove(params.asset, address(pool));
 
-        pool.supply(params.asset, params.amount, params.user, 0);
+        pool.repay(params.asset, params.amount, VARIABLE_RATE_MODE, params.user);
 
         (, , , , , uint256 hfAfter) = pool.getUserAccountData(params.user);
         if (hfAfter < params.minResultingHF) {
@@ -153,7 +134,7 @@ contract AaveAtomicRescueV1 {
         );
     }
 
-    function previewResultingHF(address user, address asset, uint256 amount)
+    function previewResultingHF(address user, address asset, uint256 repayAmount)
         external
         view
         returns (uint256)
@@ -173,25 +154,24 @@ contract AaveAtomicRescueV1 {
             return type(uint256).max;
         }
 
-        if (amount == 0) {
+        if (repayAmount == 0) {
             return currentHF;
         }
-
-        (, , uint256 liquidationThreshold, , , , , , ,) =
-            dataProvider.getReserveConfigurationData(asset);
-        if (liquidationThreshold == 0) revert AssetNotSupported();
 
         uint256 assetPrice = oracle.getAssetPrice(asset);
         uint8 assetDecimals = IERC20Metadata(asset).decimals();
 
-        uint256 addedCollateralBase = (amount * assetPrice) / (10 ** assetDecimals);
+        uint256 repayValueBase = (repayAmount * assetPrice) / (10 ** assetDecimals);
+        uint256 newDebtBase = totalDebtBase > repayValueBase ? totalDebtBase - repayValueBase : 0;
 
-        uint256 weightedBefore =
+        if (newDebtBase == 0) {
+            return type(uint256).max;
+        }
+
+        uint256 weightedCollateral =
             (totalCollateralBase * currentLiquidationThreshold) / BPS_DENOMINATOR;
-        uint256 weightedAfter =
-            weightedBefore + ((addedCollateralBase * liquidationThreshold) / BPS_DENOMINATOR);
 
-        return (weightedAfter * WAD) / totalDebtBase;
+        return (weightedCollateral * WAD) / newDebtBase;
     }
 
     function _transferIn(address asset, address from, uint256 amount) internal {

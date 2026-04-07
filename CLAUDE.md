@@ -29,7 +29,7 @@ Configured via `.env` in project root (prefixed with `VITE_` for Vite exposure):
 - `RPC_URL` — Ethereum JSON-RPC endpoint used by backend for on-chain reads (default `https://eth.llamarpc.com`)
 - `WATCHDOG_PRIVATE_KEY` — optional private key for watchdog live mode (atomic rescue); omit for dry-run only
 - `WATCHDOG_MIN_RESULTING_HF` — optional override for minimum required post-rescue HF
-- `WATCHDOG_MAX_TOP_UP_AMOUNT` — optional override for the max rescue-asset top-up per action (`WATCHDOG_MAX_TOP_UP_WBTC` still works as a legacy alias)
+- `WATCHDOG_MAX_REPAY_AMOUNT` — optional override for the max debt-repay amount per rescue action (`WATCHDOG_MAX_TOP_UP_AMOUNT` and `WATCHDOG_MAX_TOP_UP_WBTC` still work as legacy fallbacks)
 - `WATCHDOG_DEADLINE_SECONDS` — optional override for rescue transaction deadline in seconds
 - `WATCHDOG_RESCUE_CONTRACT` — optional override for Aave rescue contract address
 - `WATCHDOG_MORPHO_RESCUE_CONTRACT` — optional override for Morpho Blue rescue contract address
@@ -51,7 +51,7 @@ Backend server notes:
 - Reminder alerts include a human-readable elapsed duration label (e.g. `2h 40m ago`).
 - Fully paid-off / zero-value positions are filtered out of both dashboard data and Telegram status output.
 - Watchdog user-facing docs live in `docs/watchdog-user-manual.md`.
-- Watchdog uses an atomic on-chain rescue path: it computes required WBTC collateral top-up off-chain and submits a single `rescue(...)` transaction to the configured rescue contract.
+- Watchdog uses an atomic on-chain rescue path: it computes the required debt-token repay amount off-chain and submits a single `rescue(...)` transaction to the configured rescue contract, which repays the loan's borrowed asset (e.g. USDC/USDT) from the wallet.
 - Watchdog is fully wired: monitor integration, `GET /api/watchdog/status` endpoint, `/watchdog` Telegram command, config via `GET/PUT /api/config`, and dashboard settings controls for watchdog fields.
 - `zones[].maxHF` accepts JSON `null` on `PUT /api/config` and is normalized to `Infinity` (important because JSON serialization turns `Infinity` into `null`).
 - Legacy configs that omit one or more zones are hydrated back to the full default six-zone set by name, so runtime, `/api/config`, and the dashboard stay aligned.
@@ -63,9 +63,9 @@ Backend server notes:
 - Morpho loan IDs use the market `uniqueKey`; market names follow the `morpho_<COLLATERAL>_<LOAN>` convention.
 - Interest rate / utilization curve charts are not available for Morpho markets (Aave-specific on-chain telemetry).
 - Watchdog rescue supports both Aave and Morpho Blue loans via separate rescue contracts (`rescueContract` for Aave, `morphoRescueContract` for Morpho).
-- Morpho rescue uses the market-specific collateral token (resolved from `LoanPosition.morphoMarketParams`) rather than hardcoded WBTC.
+- Morpho rescue uses the market-specific loan token (resolved from `LoanPosition.morphoMarketParams.loanToken`) to repay debt.
 - Morpho rescue preview/guard math uses accrued borrow interest and Morpho's virtual-share conversion instead of raw stale market totals.
-- Watchdog top-up caps are configured as a generic rescue-asset amount (`maxTopUpAmount`), not a WBTC-only value.
+- Watchdog repay caps are configured via `maxRepayAmount` (denominated in the debt token, e.g. 500 USDC).
 
 Frontend notes:
 

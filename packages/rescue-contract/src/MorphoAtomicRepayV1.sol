@@ -25,12 +25,13 @@ interface IMorpho {
         uint128 fee;
     }
 
-    function supplyCollateral(
+    function repay(
         MarketParams calldata marketParams,
         uint256 assets,
+        uint256 shares,
         address onBehalf,
         bytes calldata data
-    ) external;
+    ) external returns (uint256, uint256);
 
     function position(bytes32 id, address user)
         external
@@ -61,7 +62,7 @@ interface IOracle {
     function price() external view returns (uint256);
 }
 
-contract MorphoAtomicRescueV1 {
+contract MorphoAtomicRepayV1 {
     struct RescueParams {
         address user;
         IMorpho.MarketParams marketParams;
@@ -75,6 +76,7 @@ contract MorphoAtomicRescueV1 {
     error MarketNotSupported();
     error InvalidAddress();
     error InvalidAmount();
+    error UserNotOwner();
     error NoBorrowPosition();
     error ResultingHFTooLow(uint256 actual, uint256 minimum);
     error TokenTransferFailed();
@@ -121,15 +123,18 @@ contract MorphoAtomicRescueV1 {
         owner = newOwner;
     }
 
-    function setSupportedMarket(IMorpho.MarketParams calldata marketParams, bool enabled) external onlyOwner {
+    function setSupportedMarket(IMorpho.MarketParams calldata marketParams, bool enabled)
+        external
+        onlyOwner
+    {
         bytes32 id = _marketId(marketParams);
         supportedMarket[id] = enabled;
         emit MarketSupportUpdated(id, enabled);
     }
 
     function rescue(RescueParams calldata params) external onlyOwner {
+        if (params.user != owner) revert UserNotOwner();
         if (params.deadline < block.timestamp) revert DeadlineExpired();
-        if (params.user == address(0)) revert InvalidAddress();
         if (params.amount == 0) revert InvalidAmount();
 
         bytes32 id = _marketId(params.marketParams);
@@ -137,10 +142,10 @@ contract MorphoAtomicRescueV1 {
 
         uint256 hfBefore = _computeHF(params.marketParams, id, params.user, 0);
 
-        _transferIn(params.marketParams.collateralToken, params.user, params.amount);
-        _forceApprove(params.marketParams.collateralToken, address(morpho));
+        _transferIn(params.marketParams.loanToken, params.user, params.amount);
+        _forceApprove(params.marketParams.loanToken, address(morpho));
 
-        morpho.supplyCollateral(params.marketParams, params.amount, params.user, "");
+        morpho.repay(params.marketParams, params.amount, 0, params.user, "");
 
         uint256 hfAfter = _computeHF(params.marketParams, id, params.user, 0);
         if (hfAfter < params.minResultingHF) {
@@ -148,52 +153,57 @@ contract MorphoAtomicRescueV1 {
         }
 
         emit RescueExecuted(
-            params.user,
-            id,
-            params.amount,
-            hfBefore,
-            hfAfter,
-            params.minResultingHF
+            params.user, id, params.amount, hfBefore, hfAfter, params.minResultingHF
         );
     }
 
     function previewResultingHF(
         IMorpho.MarketParams calldata marketParams,
         address user,
-        uint256 additionalCollateral
+        uint256 debtReduction
     ) external view returns (uint256) {
         bytes32 id = _marketId(marketParams);
         if (!supportedMarket[id]) revert MarketNotSupported();
-        return _computeHF(marketParams, id, user, additionalCollateral);
+        return _computeHF(marketParams, id, user, debtReduction);
     }
 
     function _computeHF(
         IMorpho.MarketParams calldata marketParams,
         bytes32 marketId,
         address user,
-        uint256 additionalCollateral
+        uint256 debtReduction
     ) internal view returns (uint256) {
         (, uint128 borrowShares, uint128 collateral) = morpho.position(marketId, user);
 
         if (borrowShares == 0) return type(uint256).max;
 
         IMorpho.Market memory marketState = _marketState(marketId);
-        uint256 borrowAssets = _expectedBorrowAssets(marketParams, marketState, uint256(borrowShares));
-        if (borrowAssets == 0) return type(uint256).max;
+        uint256 borrowAssets =
+            _expectedBorrowAssets(marketParams, marketState, uint256(borrowShares));
+
+        uint256 effectiveBorrow = borrowAssets > debtReduction ? borrowAssets - debtReduction : 0;
+        if (effectiveBorrow == 0) return type(uint256).max;
 
         uint256 oraclePrice = IOracle(marketParams.oracle).price();
-        uint256 totalCollateral = uint256(collateral) + additionalCollateral;
         uint256 maxBorrow = _wMulDown(
-            _mulDivDown(totalCollateral, oraclePrice, ORACLE_PRICE_SCALE), marketParams.lltv
+            _mulDivDown(uint256(collateral), oraclePrice, ORACLE_PRICE_SCALE), marketParams.lltv
         );
-        return _wDivDown(maxBorrow, borrowAssets);
+        return _wDivDown(maxBorrow, effectiveBorrow);
     }
 
-    function _marketId(IMorpho.MarketParams calldata marketParams) internal pure returns (bytes32) {
+    function _marketId(IMorpho.MarketParams calldata marketParams)
+        internal
+        pure
+        returns (bytes32)
+    {
         return keccak256(abi.encode(marketParams));
     }
 
-    function _marketState(bytes32 marketId) internal view returns (IMorpho.Market memory marketState) {
+    function _marketState(bytes32 marketId)
+        internal
+        view
+        returns (IMorpho.Market memory marketState)
+    {
         (
             uint128 totalSupplyAssets,
             uint128 totalSupplyShares,
@@ -222,15 +232,21 @@ contract MorphoAtomicRescueV1 {
         uint256 elapsed = block.timestamp - uint256(marketState.lastUpdate);
 
         if (elapsed != 0 && marketParams.irm != address(0)) {
-            uint256 borrowRate = IIrm(marketParams.irm).borrowRateView(marketParams, marketState);
-            uint256 interest = _wMulDown(totalBorrowAssets, _wTaylorCompounded(borrowRate, elapsed));
+            uint256 borrowRate =
+                IIrm(marketParams.irm).borrowRateView(marketParams, marketState);
+            uint256 interest =
+                _wMulDown(totalBorrowAssets, _wTaylorCompounded(borrowRate, elapsed));
             totalBorrowAssets += interest;
         }
 
         return _toAssetsUp(borrowShares, totalBorrowAssets, uint256(marketState.totalBorrowShares));
     }
 
-    function _toAssetsUp(uint256 shares, uint256 totalAssets, uint256 totalShares) internal pure returns (uint256) {
+    function _toAssetsUp(uint256 shares, uint256 totalAssets, uint256 totalShares)
+        internal
+        pure
+        returns (uint256)
+    {
         return _mulDivUp(shares, totalAssets + 1, totalShares + 1e6);
     }
 

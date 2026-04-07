@@ -9,9 +9,6 @@ import type { WatchdogConfig } from './storage.js';
 import type { TelegramClient } from './telegram.js';
 import { logger } from './logger.js';
 
-const WBTC_CONTRACT = '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599';
-const WBTC_DECIMALS = 8;
-
 const ERC20_INTERFACE = new Interface([
   'function balanceOf(address owner) view returns (uint256)',
   'function allowance(address owner, address spender) view returns (uint256)',
@@ -36,8 +33,8 @@ export type WatchdogLogEntry = {
   action: 'dry-run' | 'rescue' | 'skipped';
   reason: string;
   healthFactor: number;
-  topUpAmount: number;
-  topUpAssetSymbol: string;
+  repayAmount: number;
+  repayAssetSymbol: string;
   projectedHF: number;
   txHash?: string;
 };
@@ -101,11 +98,20 @@ export class Watchdog {
       return;
     }
 
-    // Resolve protocol-specific rescue contract and collateral info
-    const collateralToken = isMorpho ? loan.supplied[0]?.address : WBTC_CONTRACT;
-    const collateralDecimals = isMorpho ? (loan.supplied[0]?.decimals ?? 8) : WBTC_DECIMALS;
+    // Resolve protocol-specific rescue contract and debt token info.
+    // For Aave, pick the borrowed asset with the largest USD value — repaying
+    // the biggest debt component gives the most HF improvement per dollar.
+    const primaryDebt = isMorpho
+      ? loan.borrowed[0]
+      : loan.borrowed.length > 1
+        ? loan.borrowed.reduce((a, b) => (b.usdValue > a.usdValue ? b : a))
+        : loan.borrowed[0];
+    const debtToken = isMorpho
+      ? (loan.morphoMarketParams?.loanToken ?? primaryDebt?.address)
+      : primaryDebt?.address;
+    const debtDecimals = primaryDebt?.decimals ?? 6;
     const morphoParams = isMorpho ? loan.morphoMarketParams : undefined;
-    const collateralSymbol = isMorpho ? (loan.supplied[0]?.symbol ?? 'collateral') : 'WBTC';
+    const debtSymbol = primaryDebt?.symbol ?? 'USDC';
     const rescueContract = isMorpho
       ? config.morphoRescueContract.trim()
       : config.rescueContract.trim();
@@ -118,23 +124,23 @@ export class Watchdog {
         action: 'skipped',
         reason: `Invalid or missing ${isMorpho ? 'morphoRescueContract' : 'rescueContract'} in watchdog config`,
         healthFactor,
-        topUpAmount: 0,
-        topUpAssetSymbol: collateralSymbol,
+        repayAmount: 0,
+        repayAssetSymbol: debtSymbol,
         projectedHF: healthFactor,
       });
       return;
     }
-    if (isMorpho && (!collateralToken || !morphoParams)) {
+    if (isMorpho && (!debtToken || !morphoParams)) {
       this.addLog({
         timestamp: Date.now(),
         loanId: loan.id,
         wallet: walletAddress,
         protocol,
         action: 'skipped',
-        reason: 'Morpho loan missing collateral or market params',
+        reason: 'Morpho loan missing debt token or market params',
         healthFactor,
-        topUpAmount: 0,
-        topUpAssetSymbol: collateralSymbol,
+        repayAmount: 0,
+        repayAssetSymbol: debtSymbol,
         projectedHF: healthFactor,
       });
       return;
@@ -153,14 +159,14 @@ export class Watchdog {
         action: 'skipped',
         reason: `Cooldown active: ${Math.round(remainingMs / 1000)}s remaining`,
         healthFactor,
-        topUpAmount: 0,
-        topUpAssetSymbol: collateralSymbol,
+        repayAmount: 0,
+        repayAssetSymbol: debtSymbol,
         projectedHF: healthFactor,
       });
       return;
     }
 
-    let topUpAmount: number;
+    let repayAmount: number;
     let projectedHF: number;
     let amountRaw: bigint;
     const provider = this.getProvider();
@@ -177,19 +183,16 @@ export class Watchdog {
             morphoParams!,
           )
       : (amount: bigint) =>
-          this.previewResultingHF(provider, rescueContract, walletAddress, amount);
+          this.previewResultingHF(provider, rescueContract, walletAddress, debtToken!, amount);
 
     try {
       const [walletBalanceRaw, allowanceRaw] = await Promise.all([
-        this.getTokenBalance(provider, collateralToken!, walletAddress),
-        this.getTokenAllowance(provider, collateralToken!, walletAddress, rescueContract),
+        this.getTokenBalance(provider, debtToken!, walletAddress),
+        this.getTokenAllowance(provider, debtToken!, walletAddress, rescueContract),
       ]);
 
-      const maxTopUpRaw = parseUnits(
-        config.maxTopUpAmount.toFixed(collateralDecimals),
-        collateralDecimals,
-      );
-      const availableRaw = minBigInt(walletBalanceRaw, allowanceRaw, maxTopUpRaw);
+      const maxRepayRaw = parseUnits(config.maxRepayAmount.toFixed(debtDecimals), debtDecimals);
+      const availableRaw = minBigInt(walletBalanceRaw, allowanceRaw, maxRepayRaw);
       if (availableRaw <= 0n) {
         this.addLog({
           timestamp: now,
@@ -197,18 +200,18 @@ export class Watchdog {
           wallet: walletAddress,
           protocol,
           action: 'skipped',
-          reason: `No available ${collateralSymbol} (balance/allowance/maxTopUp all exhausted)`,
+          reason: `No available ${debtSymbol} (balance/allowance/maxRepay all exhausted)`,
           healthFactor,
-          topUpAmount: 0,
-          topUpAssetSymbol: collateralSymbol,
+          repayAmount: 0,
+          repayAssetSymbol: debtSymbol,
           projectedHF: healthFactor,
         });
         await this.notify(
-          `🚨 <b>Watchdog: ${collateralSymbol} unavailable</b>\n\n` +
+          `🚨 <b>Watchdog: ${debtSymbol} unavailable</b>\n\n` +
             `Loan: ${loan.id} (${loan.marketName})\n` +
             `HF: <b>${healthFactor.toFixed(4)}</b>\n` +
-            `Wallet ${collateralSymbol}: ${formatUnits(walletBalanceRaw, collateralDecimals)}\n` +
-            `Allowance ${collateralSymbol}: ${formatUnits(allowanceRaw, collateralDecimals)}`,
+            `Wallet ${debtSymbol}: ${formatUnits(walletBalanceRaw, debtDecimals)}\n` +
+            `Allowance ${debtSymbol}: ${formatUnits(allowanceRaw, debtDecimals)}`,
         );
         return;
       }
@@ -232,17 +235,17 @@ export class Watchdog {
           wallet: walletAddress,
           protocol,
           action: 'skipped',
-          reason: `Insufficient ${collateralSymbol} to achieve minimum resulting HF`,
+          reason: `Insufficient ${debtSymbol} to achieve minimum resulting HF`,
           healthFactor,
-          topUpAmount: 0,
-          topUpAssetSymbol: collateralSymbol,
+          repayAmount: 0,
+          repayAssetSymbol: debtSymbol,
           projectedHF: healthFactor,
         });
         await this.notify(
           `🚨 <b>Watchdog: Rescue not feasible</b>\n\n` +
             `Loan: ${loan.id} (${loan.marketName})\n` +
             `Current HF: <b>${healthFactor.toFixed(4)}</b>\n` +
-            `Max usable ${collateralSymbol}: ${formatUnits(availableRaw, collateralDecimals)}\n` +
+            `Max usable ${debtSymbol}: ${formatUnits(availableRaw, debtDecimals)}\n` +
             `Min resulting HF: ${config.minResultingHF}`,
         );
         return;
@@ -261,14 +264,14 @@ export class Watchdog {
           action: 'skipped',
           reason: 'Projected HF below minimum resulting HF threshold',
           healthFactor,
-          topUpAmount: this.toFormattedAmount(amountRaw, collateralDecimals),
-          topUpAssetSymbol: collateralSymbol,
+          repayAmount: this.toFormattedAmount(amountRaw, debtDecimals),
+          repayAssetSymbol: debtSymbol,
           projectedHF: this.wadToNumber(projectedHFWad),
         });
         return;
       }
 
-      topUpAmount = this.toFormattedAmount(amountRaw, collateralDecimals);
+      repayAmount = this.toFormattedAmount(amountRaw, debtDecimals);
       projectedHF = this.wadToNumber(projectedHFWad);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -280,8 +283,8 @@ export class Watchdog {
         action: 'skipped',
         reason: `On-chain call failed: ${message}`,
         healthFactor,
-        topUpAmount: 0,
-        topUpAssetSymbol: collateralSymbol,
+        repayAmount: 0,
+        repayAssetSymbol: debtSymbol,
         projectedHF: healthFactor,
       });
       await this.notify(
@@ -300,10 +303,10 @@ export class Watchdog {
         wallet: walletAddress,
         protocol,
         action: 'dry-run',
-        reason: `Would submit atomic rescue with ${topUpAmount.toFixed(8)} ${collateralSymbol}`,
+        reason: `Would submit atomic rescue with ${repayAmount.toFixed(2)} ${debtSymbol}`,
         healthFactor,
-        topUpAmount,
-        topUpAssetSymbol: collateralSymbol,
+        repayAmount,
+        repayAssetSymbol: debtSymbol,
         projectedHF,
       });
       this.cooldowns.set(stateKey, now);
@@ -313,7 +316,7 @@ export class Watchdog {
           `Current HF: <b>${healthFactor.toFixed(4)}</b> (trigger: ${config.triggerHF})\n` +
           `Target HF: ${config.targetHF}\n` +
           `Min resulting HF: ${config.minResultingHF}\n\n` +
-          `Would top-up: <b>${topUpAmount.toFixed(8)} ${collateralSymbol}</b>\n` +
+          `Would repay: <b>${repayAmount.toFixed(2)} ${debtSymbol}</b>\n` +
           `Projected HF: <b>${projectedHF.toFixed(4)}</b>`,
       );
       return;
@@ -328,8 +331,8 @@ export class Watchdog {
         action: 'skipped',
         reason: 'No private key configured for live rescue execution',
         healthFactor,
-        topUpAmount,
-        topUpAssetSymbol: collateralSymbol,
+        repayAmount,
+        repayAssetSymbol: debtSymbol,
         projectedHF,
       });
       return;
@@ -345,14 +348,14 @@ export class Watchdog {
         action: 'skipped',
         reason: `Gas price ${gasPriceGwei.toFixed(1)} gwei exceeds max ${config.maxGasGwei} gwei`,
         healthFactor,
-        topUpAmount,
-        topUpAssetSymbol: collateralSymbol,
+        repayAmount,
+        repayAssetSymbol: debtSymbol,
         projectedHF,
       });
       await this.notify(
         `⛽ <b>Watchdog: Gas too high</b>\n\n` +
           `Current: ${gasPriceGwei.toFixed(1)} gwei (max: ${config.maxGasGwei})\n` +
-          `Skipping rescue for ${topUpAmount.toFixed(8)} ${collateralSymbol}`,
+          `Skipping rescue for ${repayAmount.toFixed(2)} ${debtSymbol}`,
       );
       return;
     }
@@ -367,14 +370,14 @@ export class Watchdog {
         action: 'skipped',
         reason: `Insufficient ETH for gas: ${ethBalance.toFixed(6)} ETH`,
         healthFactor,
-        topUpAmount,
-        topUpAssetSymbol: collateralSymbol,
+        repayAmount,
+        repayAssetSymbol: debtSymbol,
         projectedHF,
       });
       await this.notify(
         `⛽ <b>Watchdog: Insufficient ETH for gas</b>\n\n` +
           `Balance: ${ethBalance.toFixed(6)} ETH\n` +
-          `Skipping rescue for ${topUpAmount.toFixed(8)} ${collateralSymbol}`,
+          `Skipping rescue for ${repayAmount.toFixed(2)} ${debtSymbol}`,
       );
       return;
     }
@@ -393,6 +396,7 @@ export class Watchdog {
         : await this.submitRescueTransaction(
             walletAddress,
             rescueContract,
+            debtToken!,
             amountRaw,
             minHFWad,
             deadline,
@@ -404,10 +408,10 @@ export class Watchdog {
         wallet: walletAddress,
         protocol,
         action: 'rescue',
-        reason: `Rescue submitted with ${topUpAmount.toFixed(8)} ${collateralSymbol}`,
+        reason: `Rescue submitted with ${repayAmount.toFixed(2)} ${debtSymbol}`,
         healthFactor,
-        topUpAmount,
-        topUpAssetSymbol: collateralSymbol,
+        repayAmount,
+        repayAssetSymbol: debtSymbol,
         projectedHF,
         txHash,
       });
@@ -416,7 +420,7 @@ export class Watchdog {
       await this.notify(
         `✅ <b>Watchdog: Atomic rescue executed</b>\n\n` +
           `Loan: ${loan.id} (${loan.marketName})\n` +
-          `Top-up: <b>${topUpAmount.toFixed(8)} ${collateralSymbol}</b>\n` +
+          `Repay: <b>${repayAmount.toFixed(2)} ${debtSymbol}</b>\n` +
           `Projected HF: <b>${projectedHF.toFixed(4)}</b>\n` +
           `Tx: <code>${txHash}</code>`,
       );
@@ -430,8 +434,8 @@ export class Watchdog {
         action: 'skipped',
         reason: `Rescue tx failed: ${message}`,
         healthFactor,
-        topUpAmount,
-        topUpAssetSymbol: collateralSymbol,
+        repayAmount,
+        repayAssetSymbol: debtSymbol,
         projectedHF,
       });
       this.cooldowns.set(stateKey, Date.now());
@@ -439,7 +443,7 @@ export class Watchdog {
       await this.notify(
         `❌ <b>Watchdog: Rescue failed</b>\n\n` +
           `Loan: ${loan.id} (${loan.marketName})\n` +
-          `Top-up attempted: <b>${topUpAmount.toFixed(8)} ${collateralSymbol}</b>\n` +
+          `Repay attempted: <b>${repayAmount.toFixed(2)} ${debtSymbol}</b>\n` +
           `Error: ${message}`,
       );
     }
@@ -452,48 +456,45 @@ export class Watchdog {
   ): Promise<bigint | null> {
     if (maxAmount <= 0n) return null;
 
-    // HF is linear in amount: HF(a) = currentHF + slope * a
-    // Two points (amount=0, amount=maxAmount) determine the line exactly.
+    // HF(amount) is monotonically increasing (more repay → higher HF) but
+    // hyperbolic, not linear: HF = C / (D - x). We use a bounded binary
+    // search to find the minimum amount that meets targetHF.
     const [currentHF, maxHF] = await Promise.all([previewFn(0n), previewFn(maxAmount)]);
 
     if (currentHF >= targetHF) return 0n;
     if (maxHF < targetHF) return null;
 
-    // Linear interpolation: amount = maxAmount * (targetHF - currentHF) / (maxHF - currentHF)
-    // Add 1 to round up so we meet the target rather than falling just short.
-    const numerator = maxAmount * (targetHF - currentHF);
-    const denominator = maxHF - currentHF;
-    const estimate = numerator / denominator + 1n;
-    const clamped = estimate > maxAmount ? maxAmount : estimate;
-
-    // Verify the estimate with a single confirmation call
-    const verifiedHF = await previewFn(clamped);
-    if (verifiedHF >= targetHF) return clamped;
-
-    // Estimate undershot (oracle drift between preview calls). Refine once: interpolate
-    // between the undershot estimate (verifiedHF) and maxAmount (maxHF) to avoid
-    // falling back to the full maxAmount unnecessarily.
-    if (verifiedHF < targetHF && maxHF > verifiedHF) {
-      const gap = maxAmount - clamped;
-      const refinedEstimate = clamped + (gap * (targetHF - verifiedHF)) / (maxHF - verifiedHF) + 1n;
-      const refinedClamped = refinedEstimate > maxAmount ? maxAmount : refinedEstimate;
-      const refinedHF = await previewFn(refinedClamped);
-      if (refinedHF >= targetHF) return refinedClamped;
+    let lo = 0n;
+    let hi = maxAmount;
+    // Each iteration halves the search range via one read-only eth_call.
+    // Scale iterations to the bit-width of maxAmount so precision reaches
+    // ~1 base unit even for large 18-decimal ranges.
+    let bits = 0;
+    for (let v = maxAmount; v > 0n; v >>= 1n) bits++;
+    const MAX_ITERATIONS = Math.min(bits, 64);
+    for (let i = 0; i < MAX_ITERATIONS && lo < hi; i++) {
+      const mid = (lo + hi) / 2n;
+      const midHF = await previewFn(mid);
+      if (midHF >= targetHF) {
+        hi = mid;
+      } else {
+        lo = mid + 1n;
+      }
     }
 
-    // Last resort: use maxAmount since we already know it achieves the target.
-    return maxAmount;
+    return hi;
   }
 
   private async previewResultingHF(
     provider: JsonRpcProvider,
     rescueContract: string,
     user: string,
+    debtTokenAddress: string,
     amountRaw: bigint,
   ): Promise<bigint> {
     const data = RESCUE_INTERFACE.encodeFunctionData('previewResultingHF', [
       user,
-      WBTC_CONTRACT,
+      debtTokenAddress,
       amountRaw,
     ]);
     const result = await provider.call({ to: rescueContract, data });
@@ -504,6 +505,7 @@ export class Watchdog {
   private async submitRescueTransaction(
     from: string,
     rescueContract: string,
+    debtTokenAddress: string,
     amountRaw: bigint,
     minResultingHF: bigint,
     deadline: number,
@@ -519,7 +521,7 @@ export class Watchdog {
     const data = RESCUE_INTERFACE.encodeFunctionData('rescue', [
       {
         user: from,
-        asset: WBTC_CONTRACT,
+        asset: debtTokenAddress,
         amount: amountRaw,
         minResultingHF,
         deadline,
@@ -685,8 +687,8 @@ export class Watchdog {
         reason: entry.reason,
         loan: entry.loanId,
         healthFactor: Number(entry.healthFactor.toFixed(4)),
-        topUpAmount: entry.topUpAmount,
-        topUpAssetSymbol: entry.topUpAssetSymbol,
+        repayAmount: entry.repayAmount,
+        repayAssetSymbol: entry.repayAssetSymbol,
         ...(entry.txHash && { txHash: entry.txHash }),
       },
       'Watchdog log entry',
