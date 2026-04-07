@@ -23,6 +23,7 @@ import { logger } from './logger.js';
 
 export type LoanAlertState = {
   loanId: string;
+  marketName: string;
   wallet: string;
   healthFactor: number;
   adjustedHF: number;
@@ -253,6 +254,7 @@ export class Monitor {
       if (!existing) {
         this.states.set(stateKey, {
           loanId: loan.id,
+          marketName: loan.marketName,
           wallet: address,
           healthFactor: metrics.healthFactor,
           adjustedHF: metrics.adjustedHF,
@@ -271,6 +273,7 @@ export class Monitor {
       }
 
       const previousZone = existing.currentZone;
+      existing.marketName = loan.marketName;
       existing.healthFactor = metrics.healthFactor;
       existing.adjustedHF = metrics.adjustedHF;
       existing.debtUsd = metrics.debt;

@@ -3,15 +3,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { z } from 'zod';
-import { formatDistanceToNowStrict } from 'date-fns';
-import {
-  classifyZone,
-  DEFAULT_ZONES,
-  fetchTokenBalances,
-  type Zone,
-  fetchStablecoinBalances,
-} from '@aave-monitor/core';
-import { ConfigStorage, type AlertConfig } from './storage.js';
+import { fetchTokenBalances, fetchStablecoinBalances } from '@aave-monitor/core';
+import { ConfigStorage } from './storage.js';
 import { TelegramClient, type TelegramBotCommand } from './telegram.js';
 import { Monitor } from './monitor.js';
 import {
@@ -22,6 +15,7 @@ import {
 import { logger } from './logger.js';
 import { fetchReserveTelemetry } from './reserveTelemetry.js';
 import { parseConfigBody } from './configSchema.js';
+import { formatStatusMessage } from './statusMessage.js';
 
 const tokenBalanceRequestSchema = z.object({
   tokens: z.array(
@@ -265,107 +259,6 @@ app.get('/api/watchdog/status', (_req, res) => {
 });
 
 // --- Telegram bot commands ---
-
-function hydrateZones(configuredZones: AlertConfig['zones']): Zone[] {
-  if (!configuredZones || configuredZones.length === 0) {
-    return DEFAULT_ZONES;
-  }
-
-  const thresholdsByName = new Map(
-    configuredZones.map((zone) => [zone.name, { minHF: zone.minHF, maxHF: zone.maxHF }]),
-  );
-
-  return DEFAULT_ZONES.map((zone) => {
-    const override = thresholdsByName.get(zone.name);
-    if (!override) return zone;
-    return { ...zone, minHF: override.minHF, maxHF: override.maxHF };
-  });
-}
-
-function formatStatusMessage(
-  status: ReturnType<typeof monitor.getStatus>,
-  configuredZones: AlertConfig['zones'],
-): string {
-  const MIN_POSITION_USD = 0.01;
-  const fmtUsd = (value: number): string =>
-    `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-  const fmtPct = (value: number): string => `${(value * 100).toFixed(2)}%`;
-  const fmtDateWithRelative = (value: number): string =>
-    `${new Date(value).toLocaleString()} (${formatDistanceToNowStrict(value, { addSuffix: true })})`;
-  const visibleStates = status.states.filter(
-    (state) => state.debtUsd >= MIN_POSITION_USD || state.collateralUsd >= MIN_POSITION_USD,
-  );
-
-  if (!status.running) {
-    return 'Monitor is not running.';
-  }
-
-  if (visibleStates.length === 0) {
-    const lastPoll = status.lastPollAt
-      ? `\nLast poll: ${new Date(status.lastPollAt).toLocaleString()}`
-      : '';
-    return `No active loan positions found.${lastPoll}`;
-  }
-
-  const lines: string[] = ['<b>Loan Status</b>', ''];
-  const totals = visibleStates.reduce(
-    (acc, state) => {
-      acc.debt += state.debtUsd;
-      acc.collateral += state.collateralUsd;
-      acc.maxBorrowByLtv += state.maxBorrowByLtvUsd;
-      acc.equity += state.equityUsd;
-      acc.netEarn += state.netEarnUsd;
-      return acc;
-    },
-    { debt: 0, collateral: 0, maxBorrowByLtv: 0, equity: 0, netEarn: 0 },
-  );
-  const portfolioNetApy = totals.equity > 0 ? totals.netEarn / totals.equity : 0;
-  const collateralMargin = totals.debt > 0 ? status.totalWalletCollateralUsd / totals.debt : 0;
-  const borrowPowerUsed = totals.maxBorrowByLtv > 0 ? totals.debt / totals.maxBorrowByLtv : 0;
-  const finiteHealthFactors = visibleStates
-    .map((state) => state.healthFactor)
-    .filter((healthFactor) => Number.isFinite(healthFactor));
-  const averageHealthFactor =
-    finiteHealthFactors.length > 0
-      ? finiteHealthFactors.reduce((sum, healthFactor) => sum + healthFactor, 0) /
-        finiteHealthFactors.length
-      : Infinity;
-  const avgHealthFactorLabel = Number.isFinite(averageHealthFactor)
-    ? averageHealthFactor.toFixed(2)
-    : '∞';
-  const averageZone = classifyZone(averageHealthFactor, hydrateZones(configuredZones));
-
-  lines.push(
-    `<b>Portfolio</b>`,
-    `${averageZone.emoji} Avg HF <b>${avgHealthFactorLabel}</b>`,
-    `Net APY: <b>${fmtPct(portfolioNetApy)}</b>`,
-    `Total collateral: <b>${fmtUsd(totals.collateral)}</b>`,
-    `Total debt: <b>${fmtUsd(totals.debt)}</b>`,
-    `Borrow power used: <b>${fmtPct(borrowPowerUsed)}</b>`,
-    `Collateral margin of safety: <b>${fmtUsd(status.totalWalletCollateralUsd)}</b> (${fmtPct(collateralMargin)})`,
-    '',
-  );
-
-  for (const state of visibleStates) {
-    const addr = `${state.wallet.slice(0, 6)}...${state.wallet.slice(-4)}`;
-    const hf = Number.isFinite(state.healthFactor) ? state.healthFactor.toFixed(2) : '∞';
-    const adjHf = Number.isFinite(state.adjustedHF) ? state.adjustedHF.toFixed(2) : '∞';
-    lines.push(
-      `${state.currentZone.emoji} <code>${addr}</code> · ${state.loanId}`,
-      `   HF: <b>${hf}</b> · Adj: <b>${adjHf}</b> · Zone: ${state.currentZone.label}`,
-      '',
-    );
-  }
-
-  if (status.lastPollAt) {
-    lines.push(`Last updated: ${fmtDateWithRelative(status.lastPollAt)}`);
-  }
-  if (status.lastError) {
-    lines.push(`Last error: ${status.lastError}`);
-  }
-
-  return lines.join('\n');
-}
 
 telegram.onCommand('status', async (chatId) => {
   const status = monitor.getStatus();
