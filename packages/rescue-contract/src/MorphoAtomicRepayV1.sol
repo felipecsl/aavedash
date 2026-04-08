@@ -72,6 +72,7 @@ contract MorphoAtomicRepayV1 {
     }
 
     error NotOwner();
+    error NotExecutor();
     error DeadlineExpired();
     error MarketNotSupported();
     error InvalidAddress();
@@ -83,6 +84,7 @@ contract MorphoAtomicRepayV1 {
     error TokenApproveFailed();
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event ExecutorUpdated(address indexed previousExecutor, address indexed newExecutor);
     event MarketSupportUpdated(bytes32 indexed marketId, bool enabled);
     event RescueExecuted(
         address indexed user,
@@ -97,6 +99,7 @@ contract MorphoAtomicRepayV1 {
     uint256 private constant ORACLE_PRICE_SCALE = 1e36;
 
     address public owner;
+    address public executor;
     IMorpho public immutable MORPHO;
 
     mapping(bytes32 => bool) public supportedMarket;
@@ -106,21 +109,34 @@ contract MorphoAtomicRepayV1 {
         _;
     }
 
-    constructor(address owner_, address morpho_) {
-        if (owner_ == address(0) || morpho_ == address(0)) {
+    modifier onlyExecutor() {
+        _onlyExecutor();
+        _;
+    }
+
+    constructor(address owner_, address executor_, address morpho_) {
+        if (owner_ == address(0) || executor_ == address(0) || morpho_ == address(0)) {
             revert InvalidAddress();
         }
 
         owner = owner_;
+        executor = executor_;
         MORPHO = IMorpho(morpho_);
 
         emit OwnershipTransferred(address(0), owner_);
+        emit ExecutorUpdated(address(0), executor_);
     }
 
     function setOwner(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert InvalidAddress();
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
+    }
+
+    function setExecutor(address newExecutor) external onlyOwner {
+        if (newExecutor == address(0)) revert InvalidAddress();
+        emit ExecutorUpdated(executor, newExecutor);
+        executor = newExecutor;
     }
 
     function setSupportedMarket(IMorpho.MarketParams calldata marketParams, bool enabled)
@@ -132,7 +148,7 @@ contract MorphoAtomicRepayV1 {
         emit MarketSupportUpdated(id, enabled);
     }
 
-    function rescue(RescueParams calldata params) external onlyOwner {
+    function rescue(RescueParams calldata params) external onlyExecutor {
         if (params.user != owner) revert UserNotOwner();
         if (params.deadline < block.timestamp) revert DeadlineExpired();
         if (params.amount == 0) revert InvalidAmount();
@@ -302,5 +318,9 @@ contract MorphoAtomicRepayV1 {
 
     function _onlyOwner() internal view {
         if (msg.sender != owner) revert NotOwner();
+    }
+
+    function _onlyExecutor() internal view {
+        if (msg.sender != executor) revert NotExecutor();
     }
 }

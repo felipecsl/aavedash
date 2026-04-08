@@ -44,7 +44,8 @@ const RPC_URL = process.env.VITE_RPC_URL ?? process.env.RPC_URL ?? 'https://rpc.
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const GRAPH_API_KEY = process.env.VITE_THE_GRAPH_API_KEY ?? process.env.THE_GRAPH_API_KEY;
 const COINGECKO_API_KEY = process.env.VITE_COINGECKO_API_KEY ?? process.env.COINGECKO_API_KEY;
-const WATCHDOG_PRIVATE_KEY = process.env.WATCHDOG_PRIVATE_KEY;
+const WATCHDOG_EXECUTOR_PRIVATE_KEY =
+  process.env.WATCHDOG_EXECUTOR_PRIVATE_KEY ?? process.env.WATCHDOG_PRIVATE_KEY;
 
 const configPath = join(__dirname, '..', 'data', 'config.json');
 const storage = new ConfigStorage(configPath);
@@ -55,7 +56,7 @@ const monitor = new Monitor(
   GRAPH_API_KEY,
   COINGECKO_API_KEY,
   RPC_URL,
-  WATCHDOG_PRIVATE_KEY,
+  WATCHDOG_EXECUTOR_PRIVATE_KEY,
 );
 
 const TELEGRAM_BOT_COMMANDS: TelegramBotCommand[] = [

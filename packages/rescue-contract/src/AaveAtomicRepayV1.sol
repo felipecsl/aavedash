@@ -47,6 +47,7 @@ contract AaveAtomicRepayV1 {
     }
 
     error NotOwner();
+    error NotExecutor();
     error DeadlineExpired();
     error AssetNotSupported();
     error InvalidAddress();
@@ -57,6 +58,7 @@ contract AaveAtomicRepayV1 {
     error TokenApproveFailed();
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event ExecutorUpdated(address indexed previousExecutor, address indexed newExecutor);
     event AssetSupportUpdated(address indexed asset, bool enabled);
     event RescueExecuted(
         address indexed user,
@@ -72,6 +74,7 @@ contract AaveAtomicRepayV1 {
     uint256 private constant VARIABLE_RATE_MODE = 2;
 
     address public owner;
+    address public executor;
     IAavePool public immutable POOL;
     IAaveOracle public immutable ORACLE;
 
@@ -82,16 +85,26 @@ contract AaveAtomicRepayV1 {
         _;
     }
 
-    constructor(address owner_, address pool_, address addressesProvider_) {
-        if (owner_ == address(0) || pool_ == address(0) || addressesProvider_ == address(0)) {
+    modifier onlyExecutor() {
+        _onlyExecutor();
+        _;
+    }
+
+    constructor(address owner_, address executor_, address pool_, address addressesProvider_) {
+        if (
+            owner_ == address(0) || executor_ == address(0) || pool_ == address(0)
+                || addressesProvider_ == address(0)
+        ) {
             revert InvalidAddress();
         }
 
         owner = owner_;
+        executor = executor_;
         POOL = IAavePool(pool_);
         ORACLE = IAaveOracle(IAaveAddressesProvider(addressesProvider_).getPriceOracle());
 
         emit OwnershipTransferred(address(0), owner_);
+        emit ExecutorUpdated(address(0), executor_);
     }
 
     function setOwner(address newOwner) external onlyOwner {
@@ -100,13 +113,19 @@ contract AaveAtomicRepayV1 {
         owner = newOwner;
     }
 
+    function setExecutor(address newExecutor) external onlyOwner {
+        if (newExecutor == address(0)) revert InvalidAddress();
+        emit ExecutorUpdated(executor, newExecutor);
+        executor = newExecutor;
+    }
+
     function setSupportedAsset(address asset, bool enabled) external onlyOwner {
         if (asset == address(0)) revert InvalidAddress();
         supportedAsset[asset] = enabled;
         emit AssetSupportUpdated(asset, enabled);
     }
 
-    function rescue(RescueParams calldata params) external onlyOwner {
+    function rescue(RescueParams calldata params) external onlyExecutor {
         if (params.user != owner) revert UserNotOwner();
         if (params.deadline < block.timestamp) revert DeadlineExpired();
         if (!supportedAsset[params.asset]) revert AssetNotSupported();
@@ -193,5 +212,9 @@ contract AaveAtomicRepayV1 {
 
     function _onlyOwner() internal view {
         if (msg.sender != owner) revert NotOwner();
+    }
+
+    function _onlyExecutor() internal view {
+        if (msg.sender != executor) revert NotExecutor();
     }
 }

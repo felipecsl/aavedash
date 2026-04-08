@@ -58,7 +58,7 @@ export function formatWatchdogStatusMessage(
     '',
     `Enabled: <b>${summary.enabled ? 'Yes' : 'No'}</b>`,
     `Mode: <b>${summary.dryRun ? 'Dry Run' : 'Live'}</b>`,
-    `Private Key: <b>${summary.hasPrivateKey ? 'Configured' : 'Not set'}</b>`,
+    `Executor Key: <b>${summary.hasPrivateKey ? 'Configured' : 'Not set'}</b>`,
     `Trigger HF: <b>${summary.triggerHF}</b>`,
     `Target HF: <b>${summary.targetHF}</b>`,
     `Min resulting HF: <b>${summary.minResultingHF}</b>`,

@@ -141,4 +141,5 @@ test('formatWatchdogStatusMessage escapes html-sensitive log content', () => {
   const message = formatWatchdogStatusMessage(summary, log);
   assert.match(message, /Execution failed: bad &lt;tag&gt; &amp; &quot;quoted&quot;/);
   assert.doesNotMatch(message, /Execution failed: bad <tag> & "quoted"/);
+  assert.match(message, /Executor Key: <b>Not set<\/b>/);
 });
