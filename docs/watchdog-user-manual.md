@@ -63,8 +63,8 @@ Environment overrides:
 
 Live mode requires:
 
-- `WATCHDOG_PRIVATE_KEY` set on server
-- signer address matches monitored wallet
+- `WATCHDOG_EXECUTOR_PRIVATE_KEY` set on server (`WATCHDOG_PRIVATE_KEY` still works as a fallback alias)
+- executor address is authorized by the rescue contract
 - monitored wallet has debt token balance (e.g. USDC)
 - monitored wallet has approved `rescueContract` to pull the debt token
 
@@ -73,6 +73,7 @@ Live mode requires:
 Live mode additionally requires:
 
 - `morphoRescueContract` configured (separate contract from the Aave rescue)
+- executor address is authorized by the Morpho rescue contract
 - monitored wallet has loan token balance (e.g. USDC)
 - monitored wallet has approved `morphoRescueContract` to pull the loan token
 
@@ -107,7 +108,7 @@ Live:
 - Projected HF cannot reach `minResultingHF`
 - Gas above `maxGasGwei`
 - Insufficient ETH for gas
-- Signer mismatch
+- Missing executor authorization
 
 ## Safety Checklist
 

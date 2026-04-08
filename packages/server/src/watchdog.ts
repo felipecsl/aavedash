@@ -51,7 +51,7 @@ export class Watchdog {
     private readonly getChatId: () => string | null,
     private readonly getConfig: () => WatchdogConfig,
     private readonly rpcUrl: string,
-    private readonly privateKey: string | undefined,
+    private readonly executorPrivateKey: string | undefined,
   ) {}
 
   getLog(): WatchdogLogEntry[] {
@@ -73,7 +73,7 @@ export class Watchdog {
     return {
       enabled: config.enabled,
       dryRun: config.dryRun,
-      hasPrivateKey: Boolean(this.privateKey),
+      hasPrivateKey: Boolean(this.executorPrivateKey),
       triggerHF: config.triggerHF,
       targetHF: config.targetHF,
       minResultingHF: config.minResultingHF,
@@ -322,14 +322,14 @@ export class Watchdog {
       return;
     }
 
-    if (!this.privateKey) {
+    if (!this.executorPrivateKey) {
       this.addLog({
         timestamp: now,
         loanId: loan.id,
         wallet: walletAddress,
         protocol,
         action: 'skipped',
-        reason: 'No private key configured for live rescue execution',
+        reason: 'No executor private key configured for live rescue execution',
         healthFactor,
         repayAmount,
         repayAssetSymbol: debtSymbol,
@@ -511,13 +511,6 @@ export class Watchdog {
     deadline: number,
   ): Promise<string> {
     const wallet = this.getWallet();
-    if (wallet.address.toLowerCase() !== from.toLowerCase()) {
-      throw new Error(
-        `Signer address mismatch: private key controls ${wallet.address} but expected ${from}. ` +
-          `The configured private key must correspond to the monitored wallet address.`,
-      );
-    }
-
     const data = RESCUE_INTERFACE.encodeFunctionData('rescue', [
       {
         user: from,
@@ -570,13 +563,6 @@ export class Watchdog {
     deadline: number,
   ): Promise<string> {
     const wallet = this.getWallet();
-    if (wallet.address.toLowerCase() !== from.toLowerCase()) {
-      throw new Error(
-        `Signer address mismatch: private key controls ${wallet.address} but expected ${from}. ` +
-          `The configured private key must correspond to the monitored wallet address.`,
-      );
-    }
-
     const marketParamsTuple = {
       loanToken: morphoParams.loanToken,
       collateralToken: morphoParams.collateralToken,
@@ -646,11 +632,11 @@ export class Watchdog {
   }
 
   private getWallet(): Wallet {
-    if (!this.privateKey) {
-      throw new Error('No private key configured');
+    if (!this.executorPrivateKey) {
+      throw new Error('No executor private key configured');
     }
     if (!this.wallet) {
-      this.wallet = new Wallet(this.privateKey, this.getProvider());
+      this.wallet = new Wallet(this.executorPrivateKey, this.getProvider());
     }
     return this.wallet;
   }

@@ -4,8 +4,8 @@ This package contains the v1 atomic rescue contracts for both Aave and Morpho Bl
 
 ## Contents
 
-- `src/AaveAtomicRepayV1.sol` - owner-only atomic debt repay executor for Aave
-- `src/MorphoAtomicRepayV1.sol` - owner-only atomic debt repay executor for Morpho Blue
+- `src/AaveAtomicRepayV1.sol` - owner-funded, executor-triggered atomic debt repay for Aave
+- `src/MorphoAtomicRepayV1.sol` - owner-funded, executor-triggered atomic debt repay for Morpho Blue
 - `script/DeployAaveAtomicRepayV1.s.sol` - deploy script
 - `script/DeployMorphoAtomicRepayV1.s.sol` - Morpho deploy script
 - `test/AaveAtomicRepayV1.t.sol` - unit tests with mocks
@@ -23,21 +23,24 @@ yarn morpho:market-env app.morpho.org/ethereum/market/<market-id>/<slug>
 
 ## Morpho Deploy Flow
 
-The Morpho deploy script uses `RESCUE_OWNER` as the final contract owner.
+The deploy scripts use `RESCUE_OWNER` as the final contract owner and `RESCUE_EXECUTOR`
+as the wallet allowed to call `rescue(...)`.
 
 If the final owner is a hardware wallet, you can deploy from a temporary hot wallet by setting
 `INITIAL_OWNER` to the deployer address and broadcasting with that wallet's private key. The script
 will:
 
 1. Deploy `MorphoAtomicRepayV1` with `INITIAL_OWNER`
-2. Enable the configured market
-3. Transfer ownership to `RESCUE_OWNER`
+2. Set `RESCUE_EXECUTOR` (defaults to `INITIAL_OWNER` if unset)
+3. Enable the configured market
+4. Transfer ownership to `RESCUE_OWNER`
 
 Example:
 
 ```bash
 export INITIAL_OWNER=0xYourHotWallet
 export RESCUE_OWNER=0xYourHardwareWallet
+export RESCUE_EXECUTOR=0xYourHotWallet
 
 forge script script/DeployMorphoAtomicRepayV1.s.sol:DeployMorphoAtomicRepayV1 \
   --rpc-url $RPC_URL \
@@ -46,5 +49,5 @@ forge script script/DeployMorphoAtomicRepayV1.s.sol:DeployMorphoAtomicRepayV1 \
   --private-key $DEPLOYER_PRIVATE_KEY
 ```
 
-If `INITIAL_OWNER` is unset, the script behaves as before and deploys directly with
-`RESCUE_OWNER` as the owner.
+If `INITIAL_OWNER` is unset, the script deploys directly with `RESCUE_OWNER` as owner.
+If `RESCUE_EXECUTOR` is unset, it defaults to `INITIAL_OWNER`.

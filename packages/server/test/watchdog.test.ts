@@ -151,7 +151,49 @@ test('live mode skips when private key is missing', async () => {
 
   const log = watchdog.getLog();
   assert.equal(log[0]?.action, 'skipped');
-  assert.match(log[0]?.reason ?? '', /No private key configured/);
+  assert.match(log[0]?.reason ?? '', /No executor private key configured/);
+});
+
+test('live mode allows executor key to differ from monitored wallet', async () => {
+  const { watchdog, messages } = createWatchdog(createConfig({ dryRun: false }), {
+    privateKey: '0x59c6995e998f97a5a0044966f0945382d7d6a4b5d1c4fdbb3c4c7d6c7e9f4b6a',
+  });
+
+  (watchdog as unknown as { getTokenBalance: () => Promise<bigint> }).getTokenBalance = async () =>
+    100_000_000n;
+  (
+    watchdog as unknown as {
+      getTokenAllowance: () => Promise<bigint>;
+    }
+  ).getTokenAllowance = async () => 100_000_000n;
+  (
+    watchdog as unknown as {
+      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
+    }
+  ).findRequiredAmountRawGeneric = async () => 1_000_000n;
+  (
+    watchdog as unknown as {
+      previewResultingHf: () => Promise<bigint>;
+    }
+  ).previewResultingHf = async () => 1_900_000_000_000_000_000n;
+  (
+    watchdog as unknown as {
+      getGasPriceGwei: () => Promise<number>;
+    }
+  ).getGasPriceGwei = async () => 10;
+  (watchdog as unknown as { getEthBalance: () => Promise<number> }).getEthBalance = async () => 1;
+  (
+    watchdog as unknown as {
+      submitRescueTransaction: () => Promise<string>;
+    }
+  ).submitRescueTransaction = async () => '0xexecutor';
+
+  await watchdog.evaluate(createLoan(), WALLET);
+
+  const log = watchdog.getLog();
+  assert.equal(log[0]?.action, 'rescue');
+  assert.equal(log[0]?.txHash, '0xexecutor');
+  assert.equal(messages.length, 1);
 });
 
 test('live mode executes rescue and records tx hash', async () => {

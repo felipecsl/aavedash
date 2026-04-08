@@ -111,6 +111,7 @@ contract MockOracle {
 
 contract AaveAtomicRepayV1Test is Test {
     address internal owner = makeAddr("owner");
+    address internal executor = makeAddr("executor");
     address internal attacker = makeAddr("attacker");
 
     MockToken internal token;
@@ -125,7 +126,7 @@ contract AaveAtomicRepayV1Test is Test {
         oracle = new MockOracle(100_000_000); // 1.0 in base (8-decimal oracle)
         addressesProvider = new MockAddressesProvider(address(oracle));
 
-        rescue = new AaveAtomicRepayV1(owner, address(pool), address(addressesProvider));
+        rescue = new AaveAtomicRepayV1(owner, executor, address(pool), address(addressesProvider));
 
         vm.prank(owner);
         rescue.setSupportedAsset(address(token), true);
@@ -149,7 +150,7 @@ contract AaveAtomicRepayV1Test is Test {
         );
     }
 
-    function test_owner_only() external {
+    function test_executor_only() external {
         AaveAtomicRepayV1.RescueParams memory params = AaveAtomicRepayV1.RescueParams({
             user: owner,
             asset: address(token),
@@ -159,7 +160,7 @@ contract AaveAtomicRepayV1Test is Test {
         });
 
         vm.prank(attacker);
-        vm.expectRevert(AaveAtomicRepayV1.NotOwner.selector);
+        vm.expectRevert(AaveAtomicRepayV1.NotExecutor.selector);
         rescue.rescue(params);
     }
 
@@ -172,7 +173,7 @@ contract AaveAtomicRepayV1Test is Test {
             deadline: block.timestamp + 1
         });
 
-        vm.prank(owner);
+        vm.prank(executor);
         vm.expectRevert(AaveAtomicRepayV1.UserNotOwner.selector);
         rescue.rescue(params);
     }
@@ -186,7 +187,7 @@ contract AaveAtomicRepayV1Test is Test {
             deadline: block.timestamp - 1
         });
 
-        vm.prank(owner);
+        vm.prank(executor);
         vm.expectRevert(AaveAtomicRepayV1.DeadlineExpired.selector);
         rescue.rescue(params);
     }
@@ -200,7 +201,7 @@ contract AaveAtomicRepayV1Test is Test {
             deadline: block.timestamp + 10
         });
 
-        vm.prank(owner);
+        vm.prank(executor);
         rescue.rescue(params);
 
         (, uint256 debtAfter, , , , uint256 hfAfter) = pool.getUserAccountData(owner);
@@ -217,7 +218,7 @@ contract AaveAtomicRepayV1Test is Test {
             deadline: block.timestamp + 10
         });
 
-        vm.prank(owner);
+        vm.prank(executor);
         vm.expectRevert(); // ResultingHFTooLow
         rescue.rescue(params);
     }
@@ -236,7 +237,7 @@ contract AaveAtomicRepayV1Test is Test {
             deadline: block.timestamp + 10
         });
 
-        vm.prank(owner);
+        vm.prank(executor);
         vm.expectRevert(AaveAtomicRepayV1.AssetNotSupported.selector);
         rescue.rescue(params);
     }
@@ -253,5 +254,20 @@ contract AaveAtomicRepayV1Test is Test {
         // Need repayValueBase >= 750_000 → amount >= 7_500
         uint256 hf = rescue.previewResultingHf(owner, address(token), 10_000_000);
         assertEq(hf, type(uint256).max);
+    }
+
+    function test_owner_can_update_executor() external {
+        address newExecutor = makeAddr("newExecutor");
+
+        vm.prank(owner);
+        rescue.setExecutor(newExecutor);
+
+        assertEq(rescue.executor(), newExecutor);
+    }
+
+    function test_non_owner_cannot_set_executor() external {
+        vm.prank(attacker);
+        vm.expectRevert(AaveAtomicRepayV1.NotOwner.selector);
+        rescue.setExecutor(attacker);
     }
 }
