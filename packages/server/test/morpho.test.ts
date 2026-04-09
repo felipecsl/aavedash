@@ -3,7 +3,6 @@ import { afterEach, before, describe, it } from 'node:test';
 import {
   computeLoanMetrics,
   computePortfolioSummary,
-  DEFAULT_R_DEPLOY,
   type LoanPosition,
   type MorphoVaultPosition,
 } from '@aave-monitor/core';
@@ -456,7 +455,7 @@ describe('Morpho LoanPosition works with computeLoanMetrics', () => {
       totalBorrowedUsd: 500,
     };
 
-    const metrics = computeLoanMetrics(loan, DEFAULT_R_DEPLOY);
+    const metrics = computeLoanMetrics(loan);
 
     // HF = (3000 * 0.86) / 500 = 5.16
     assert.ok(Math.abs(metrics.healthFactor - 5.16) < 0.01);
@@ -540,7 +539,6 @@ describe('computePortfolioSummary with Morpho vaults', () => {
       [loan],
       [vault],
       new Map([['0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', 250]]),
-      DEFAULT_R_DEPLOY,
     );
 
     assert.ok(summary);
@@ -555,13 +553,9 @@ describe('computePortfolioSummary with Morpho vaults', () => {
     assert.ok(Math.abs(summary.borrowPowerUsed - 500 / (3000 * 0.86)) < 0.0001);
     assert.equal(summary.repayCoverage, 0.5);
     const expectedSupplyEarn = 2500 * 0.036;
-    const expectedDeployEarn = 500 * DEFAULT_R_DEPLOY;
     assert.ok(Math.abs(summary.totalSupplyEarn - expectedSupplyEarn) < 0.0001);
     assert.ok(Math.abs(summary.totalBorrowCost - 22.5) < 0.0001);
-    assert.ok(Math.abs(summary.totalDeployEarn - expectedDeployEarn) < 0.0001);
-    assert.ok(
-      Math.abs(summary.totalNetEarn - (expectedSupplyEarn - 22.5 + expectedDeployEarn)) < 0.0001,
-    );
+    assert.ok(Math.abs(summary.totalNetEarn - (expectedSupplyEarn - 22.5)) < 0.0001);
     assert.ok(Math.abs(summary.totalLoanNetEarn - -22.5) < 0.0001);
     assert.ok(
       Math.abs(summary.totalLoanNetEarnAfterVaults - (-22.5 + expectedSupplyEarn)) < 0.0001,
@@ -596,7 +590,7 @@ describe('computePortfolioSummary with Morpho vaults', () => {
       netApy: 0.036,
     };
 
-    const summary = computePortfolioSummary([], [vault], new Map(), DEFAULT_R_DEPLOY);
+    const summary = computePortfolioSummary([], [vault], new Map());
 
     assert.ok(summary);
     assert.equal(summary.totalAssets, 2500);

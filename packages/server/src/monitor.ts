@@ -12,7 +12,6 @@ import {
   fetchUsdPrices,
   buildLoanPositions,
   computeLoanMetrics,
-  DEFAULT_R_DEPLOY,
   DEFAULT_ZONES,
 } from '@aave-monitor/core';
 import { intervalToDuration } from 'date-fns';
@@ -232,7 +231,7 @@ export class Monitor {
     let shouldSendReminderDigest = false;
 
     for (const loan of loans) {
-      const metrics = computeLoanMetrics(loan, DEFAULT_R_DEPLOY);
+      const metrics = computeLoanMetrics(loan);
       const zone = classifyZone(metrics.healthFactor, this.hydrateZones(config.zones));
       const stateKey = `${address}-${loan.id}`;
       activeStateKeys.add(stateKey);

@@ -1,9 +1,4 @@
-import {
-  computeLoanMetrics,
-  DEFAULT_R_DEPLOY,
-  type LoanPosition,
-  type MorphoMarketParams,
-} from '@aave-monitor/core';
+import { computeLoanMetrics, type LoanPosition, type MorphoMarketParams } from '@aave-monitor/core';
 import { formatUnits, Interface, JsonRpcProvider, parseUnits, Wallet } from 'ethers';
 import type { WatchdogConfig } from './storage.js';
 import type { TelegramClient } from './telegram.js';
@@ -94,7 +89,7 @@ export class Watchdog {
 
     if (!config.enabled) return;
 
-    const healthFactor = computeLoanMetrics(loan, DEFAULT_R_DEPLOY).healthFactor;
+    const healthFactor = computeLoanMetrics(loan).healthFactor;
     if (!Number.isFinite(healthFactor) || healthFactor >= config.triggerHF) {
       return;
     }

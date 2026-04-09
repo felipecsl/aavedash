@@ -84,12 +84,6 @@ export function portfolioHealthFactorBand(hf: number): {
   };
 }
 
-export function parseDeployRate(value: string | undefined, defaultRate: number): number {
-  if (!value) return defaultRate;
-  const parsed = Number(value.trim());
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultRate;
-}
-
 export function computeAdjustedHF(loan: LoanPosition): AdjustedHFResult {
   const debt = loan.totalBorrowedUsd;
   const borrowedSymbols = new Set(loan.borrowed.map((b) => b.symbol));
@@ -119,7 +113,7 @@ export function computeAdjustedHF(loan: LoanPosition): AdjustedHFResult {
   };
 }
 
-export function computeLoanMetrics(loan: LoanPosition | null, rDeploy: number): Computed {
+export function computeLoanMetrics(loan: LoanPosition | null): Computed {
   if (!loan) {
     return {
       units: 0,
@@ -136,7 +130,6 @@ export function computeLoanMetrics(loan: LoanPosition | null, rDeploy: number): 
       priceDropToLiq: 0,
       supplyEarnUSD: 0,
       borrowCostUSD: 0,
-      deployEarnUSD: 0,
       netEarnUSD: 0,
       netAPYOnEquity: 0,
       maxBorrowByLTV: 0,
@@ -151,7 +144,6 @@ export function computeLoanMetrics(loan: LoanPosition | null, rDeploy: number): 
       lt: 0,
       rSupply: 0,
       rBorrow: 0,
-      rDeploy: 0,
       primaryCollateralSymbol: '—',
       assetLiquidations: [],
     };
@@ -188,7 +180,6 @@ export function computeLoanMetrics(loan: LoanPosition | null, rDeploy: number): 
 
   const supplyEarnUSD = collateralUSD * rSupply;
   const borrowCostUSD = debt * rBorrow;
-  const deployEarnUSD = debt * rDeploy;
 
   const netEarnUSD = supplyEarnUSD - borrowCostUSD;
   const netAPYOnEquity = equity > 0 ? netEarnUSD / equity : 0;
@@ -260,7 +251,6 @@ export function computeLoanMetrics(loan: LoanPosition | null, rDeploy: number): 
     priceDropToLiq,
     supplyEarnUSD,
     borrowCostUSD,
-    deployEarnUSD,
     netEarnUSD,
     netAPYOnEquity,
     maxBorrowByLTV,
@@ -275,7 +265,6 @@ export function computeLoanMetrics(loan: LoanPosition | null, rDeploy: number): 
     lt,
     rSupply,
     rBorrow,
-    rDeploy,
     primaryCollateralSymbol,
     assetLiquidations,
   };
@@ -285,11 +274,10 @@ export function computePortfolioSummary(
   loans: LoanPosition[],
   vaults: MorphoVaultPosition[],
   walletBorrowedAssetBalances: Map<string, number>,
-  rDeploy: number,
 ): PortfolioSummary | null {
   if (loans.length === 0 && vaults.length === 0) return null;
 
-  const metrics = loans.map((loan) => computeLoanMetrics(loan, rDeploy));
+  const metrics = loans.map((loan) => computeLoanMetrics(loan));
   const totalDebt = metrics.reduce((sum, item) => sum + item.debt, 0);
   const totalRiskCollateral = metrics.reduce((sum, item) => sum + item.collateralUSD, 0);
   const totalVaultAssets = vaults.reduce((sum, vault) => sum + vault.totalAssetsUsd, 0);
@@ -302,10 +290,9 @@ export function computePortfolioSummary(
   );
   const totalSupplyEarn = totalLoanSupplyEarn + totalVaultNetEarn;
   const totalBorrowCost = metrics.reduce((sum, item) => sum + item.borrowCostUSD, 0);
-  const totalDeployEarn = metrics.reduce((sum, item) => sum + item.deployEarnUSD, 0);
   const totalLoanNetEarn = totalLoanSupplyEarn - totalBorrowCost;
   const totalLoanNetEarnAfterVaults = totalLoanNetEarn + totalVaultNetEarn;
-  const totalNetEarn = totalSupplyEarn - totalBorrowCost + totalDeployEarn;
+  const totalNetEarn = totalSupplyEarn - totalBorrowCost;
   const totalMaxBorrow = metrics.reduce((sum, item) => sum + item.maxBorrowByLTV, 0);
 
   const finiteHealthFactors = metrics
@@ -339,7 +326,6 @@ export function computePortfolioSummary(
     totalNetWorth,
     totalSupplyEarn,
     totalBorrowCost,
-    totalDeployEarn,
     totalNetEarn,
     totalLoanNetEarn,
     totalLoanNetEarnAfterVaults,

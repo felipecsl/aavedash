@@ -22,7 +22,6 @@ export {
   AAVE_MARKETS,
   COINGECKO_IDS_BY_SYMBOL,
   DEFAULT_POLLING_CONFIG,
-  DEFAULT_R_DEPLOY,
   DEFAULT_WATCHDOG_CONFIG,
   ETHEREUM_ADDRESS_REGEX,
   STABLECOIN_CONTRACTS,
@@ -46,7 +45,6 @@ export {
   healthLabel,
   n,
   parseBalance,
-  parseDeployRate,
   portfolioHealthFactorBand,
   weightedAverage,
 } from './metrics.js';

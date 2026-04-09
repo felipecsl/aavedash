@@ -107,7 +107,6 @@ export type Computed = {
   priceDropToLiq: number;
   supplyEarnUSD: number;
   borrowCostUSD: number;
-  deployEarnUSD: number;
   netEarnUSD: number;
   netAPYOnEquity: number;
   maxBorrowByLTV: number;
@@ -122,7 +121,6 @@ export type Computed = {
   lt: number;
   rSupply: number;
   rBorrow: number;
-  rDeploy: number;
   primaryCollateralSymbol: string;
   assetLiquidations: AssetLiquidation[];
 };
@@ -138,7 +136,6 @@ export type PortfolioSummary = {
   totalNetWorth: number;
   totalSupplyEarn: number;
   totalBorrowCost: number;
-  totalDeployEarn: number;
   totalNetEarn: number;
   totalLoanNetEarn: number;
   totalLoanNetEarnAfterVaults: number;

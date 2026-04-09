@@ -29,12 +29,10 @@ import {
   type MorphoVaultPosition,
   type ReserveTelemetry,
   ETHEREUM_ADDRESS_REGEX,
-  DEFAULT_R_DEPLOY,
   clamp,
   computeLoanMetrics,
   computePortfolioSummary,
   healthLabel,
-  parseDeployRate,
   fetchFromAaveSubgraph,
   fetchMorphoPositions,
   fetchUsdPrices,
@@ -44,8 +42,6 @@ import { ServerSettings } from './components/ServerSettings';
 
 const GRAPH_API_KEY = import.meta.env.VITE_THE_GRAPH_API_KEY as string | undefined;
 const COINGECKO_API_KEY = import.meta.env.VITE_COINGECKO_API_KEY as string | undefined;
-const R_DEPLOY_ENV = import.meta.env.VITE_R_DEPLOY as string | undefined;
-const R_DEPLOY = parseDeployRate(R_DEPLOY_ENV, DEFAULT_R_DEPLOY);
 const UPDATE_RATE_MS = 120_000;
 const LAST_WALLET_STORAGE_KEY = 'aave-monitor:last-wallet';
 const BORROW_RATE_HISTORY_STORAGE_PREFIX = 'aave-monitor:borrow-apr-history';
@@ -222,22 +218,17 @@ export default function App() {
     return result.loans.find((loan) => loan.id === selectedLoanId) ?? result.loans[0] ?? null;
   }, [result, selectedLoanId]);
 
-  const computed = useMemo(() => computeLoanMetrics(selectedLoan, R_DEPLOY), [selectedLoan]);
+  const computed = useMemo(() => computeLoanMetrics(selectedLoan), [selectedLoan]);
   const status = healthLabel(computed.healthFactor);
   const portfolio = useMemo(() => {
     if (!result) return null;
-    return computePortfolioSummary(
-      result.loans,
-      result.vaults,
-      walletBorrowedAssetBalances,
-      R_DEPLOY,
-    );
+    return computePortfolioSummary(result.loans, result.vaults, walletBorrowedAssetBalances);
   }, [result, walletBorrowedAssetBalances]);
   const loanRows = useMemo(() => {
     if (!result) return [];
     return result.loans.map((loan) => ({
       loan,
-      metrics: computeLoanMetrics(loan, R_DEPLOY),
+      metrics: computeLoanMetrics(loan),
     }));
   }, [result]);
   const vaultRows = useMemo(() => result?.vaults ?? [], [result]);
@@ -625,12 +616,6 @@ export default function App() {
                               {fmtPct(portfolio.repayCoverage)}
                             </span>
                           </span>
-                          <span>
-                            Deploy earnings{' '}
-                            <span className="font-semibold tabular-nums text-foreground">
-                              {fmtUSD(portfolio.totalDeployEarn, 0)}/yr
-                            </span>
-                          </span>
                         </div>
                       </CardContent>
                     </Card>
@@ -818,12 +803,6 @@ export default function App() {
                           />
                           <StaticField label="Borrow APY" value={fmtPct(computed.rBorrow)} />
                         </TwoColumn>
-
-                        <StaticField
-                          label="Borrowed funds deploy APY"
-                          value={fmtPct(computed.rDeploy)}
-                          hint="Set from your strategy outside this dashboard."
-                        />
                       </CardContent>
                     </Card>
 
@@ -970,7 +949,6 @@ export default function App() {
                           <CardContent>
                             <Row label="Supply APY" value={fmtPct(computed.rSupply)} />
                             <Row label="Borrow APY" value={fmtPct(computed.rBorrow)} />
-                            <Row label="Deploy APY (optional)" value={fmtPct(computed.rDeploy)} />
                             <Separator />
                             <Row
                               label="Supply earnings (annual)"
@@ -980,18 +958,10 @@ export default function App() {
                               label="Borrow cost (annual)"
                               value={fmtUSD(computed.borrowCostUSD, 0)}
                             />
-                            <Row
-                              label="Deploy earnings (annual)"
-                              value={fmtUSD(computed.deployEarnUSD, 0)}
-                            />
                             <Separator />
                             <Row
                               label="Net earnings (annual)"
                               value={fmtUSD(computed.netEarnUSD, 0)}
-                            />
-                            <Row
-                              label="Debt deploy earnings est. (yearly)"
-                              value={fmtUSD(computed.deployEarnUSD, 0)}
                             />
                             <Row
                               label="Net APY (on equity)"
@@ -999,9 +969,6 @@ export default function App() {
                             />
                             <p className="text-xs text-muted-foreground">
                               Net APY is ROE: (supply - borrow) / equity.
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Debt deploy estimate assumes 100% of debt earns deploy APY.
                             </p>
                           </CardContent>
                         </Card>

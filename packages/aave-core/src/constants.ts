@@ -75,8 +75,6 @@ export const STABLECOIN_CONTRACTS: Record<string, { address: string; decimals: n
   crvUSD: { address: '0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E', decimals: 18 },
 };
 
-export const DEFAULT_R_DEPLOY = 0.1125;
-
 export const ETHEREUM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
 export const DEFAULT_POLLING_CONFIG: PollingConfig = {
