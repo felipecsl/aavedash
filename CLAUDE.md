@@ -62,7 +62,8 @@ Backend server notes:
 - Aave pricing uses the `COINGECKO_IDS_BY_SYMBOL` alias map in `packages/aave-core/src/constants.ts`; add wrapped/alias symbols there when Aave reserve symbols differ from CoinGecko slugs (for example `cbBTC` -> `coinbase-wrapped-btc`).
 - Monitor logs normalize reserve symbols before checking the CoinGecko price map, and per-loan collateral log lines use each asset's resolved `usdPrice` so mixed-case symbols such as `cbBTC` / `wstETH` do not appear as `$MISSING` when pricing succeeded.
 - Morpho markets use a single LLTV (Liquidation LTV) mapped to both `maxLTV` and `liqThreshold` on `AssetPosition`.
-- Morpho loan IDs use the market `uniqueKey`; market names follow the `morpho_<COLLATERAL>_<LOAN>` convention.
+- Morpho loan IDs use the market ID; market names follow the `morpho_<COLLATERAL>_<LOAN>` convention.
+- Morpho Blue market collateral is not yield-bearing supply. Market collateral keeps `supplyRate=0`, so carry / net APY subtracts borrow cost without adding the market's loan-asset supply APY to collateral.
 - Morpho vault positions are modeled separately from `LoanPosition`; they are supply-only, render in their own dashboard table, and do not participate in HF / borrow-power math.
 - Interest rate / utilization curve charts are not available for Morpho markets (Aave-specific on-chain telemetry).
 - Watchdog rescue supports both Aave and Morpho Blue loans via separate rescue contracts (`rescueContract` for Aave, `morphoRescueContract` for Morpho).
@@ -81,6 +82,7 @@ Frontend notes:
 - On page load, wallet resolution order is: query string (`wallet`, `address`, `walletAddress`) first, then saved local storage wallet.
 - Portfolio summary math is centralized in `computePortfolioSummary()` in `packages/aave-core/src/metrics.ts`.
 - The dashboard's `Total Assets`, `Net worth`, `Supply APY`, `Net earnings`, and `Net APY` include Morpho vault deposits; `HF`, `Borrow power used`, and `Repay coverage` remain loan-only.
+- Portfolio `Net borrow cost` displays per-loan `Net earnings (annual)` values (`supply earnings - borrow cost`) plus Morpho vault net income, excluding deploy earnings.
 - The portfolio card labeled `Repay coverage` is based on wallet-held balances of tokens that also appear in the loan's borrowed asset set; it does not include unrelated wallet assets or vault deposits.
 - The utilization curve and borrow APR history charts depend on the Express API server for on-chain reserve telemetry. Without `yarn dev:server` (or the unified Docker/server runtime), those charts fall back to an unavailable message.
 - Server settings saves surface toast feedback in the dashboard for both successful updates and failed save attempts.

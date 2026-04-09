@@ -581,6 +581,12 @@ export default function App() {
                             </span>
                           </span>
                           <span>
+                            Net borrow cost{' '}
+                            <span className="font-semibold tabular-nums text-foreground">
+                              {fmtUSD(portfolio.totalLoanNetEarnAfterVaults, 0)}/yr
+                            </span>
+                          </span>
+                          <span>
                             Borrow power used{' '}
                             <span className="font-semibold tabular-nums text-foreground">
                               {fmtPct(portfolio.borrowPowerUsed)}

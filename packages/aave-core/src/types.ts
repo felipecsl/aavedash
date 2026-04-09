@@ -140,6 +140,8 @@ export type PortfolioSummary = {
   totalBorrowCost: number;
   totalDeployEarn: number;
   totalNetEarn: number;
+  totalLoanNetEarn: number;
+  totalLoanNetEarnAfterVaults: number;
   averageHealthFactor: number;
   averageSupplyApy: number;
   averageBorrowApy: number;

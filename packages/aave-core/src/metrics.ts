@@ -295,11 +295,16 @@ export function computePortfolioSummary(
   const totalVaultAssets = vaults.reduce((sum, vault) => sum + vault.totalAssetsUsd, 0);
   const totalAssets = totalRiskCollateral + totalVaultAssets;
   const totalNetWorth = metrics.reduce((sum, item) => sum + item.equity, 0) + totalVaultAssets;
-  const totalSupplyEarn =
-    metrics.reduce((sum, item) => sum + item.supplyEarnUSD, 0) +
-    vaults.reduce((sum, vault) => sum + vault.totalAssetsUsd * vault.netApy, 0);
+  const totalLoanSupplyEarn = metrics.reduce((sum, item) => sum + item.supplyEarnUSD, 0);
+  const totalVaultNetEarn = vaults.reduce(
+    (sum, vault) => sum + vault.totalAssetsUsd * vault.netApy,
+    0,
+  );
+  const totalSupplyEarn = totalLoanSupplyEarn + totalVaultNetEarn;
   const totalBorrowCost = metrics.reduce((sum, item) => sum + item.borrowCostUSD, 0);
   const totalDeployEarn = metrics.reduce((sum, item) => sum + item.deployEarnUSD, 0);
+  const totalLoanNetEarn = totalLoanSupplyEarn - totalBorrowCost;
+  const totalLoanNetEarnAfterVaults = totalLoanNetEarn + totalVaultNetEarn;
   const totalNetEarn = totalSupplyEarn - totalBorrowCost + totalDeployEarn;
   const totalMaxBorrow = metrics.reduce((sum, item) => sum + item.maxBorrowByLTV, 0);
 
@@ -336,6 +341,8 @@ export function computePortfolioSummary(
     totalBorrowCost,
     totalDeployEarn,
     totalNetEarn,
+    totalLoanNetEarn,
+    totalLoanNetEarnAfterVaults,
     averageHealthFactor,
     averageSupplyApy: totalAssets > 0 ? totalSupplyEarn / totalAssets : 0,
     averageBorrowApy: totalDebt > 0 ? totalBorrowCost / totalDebt : 0,

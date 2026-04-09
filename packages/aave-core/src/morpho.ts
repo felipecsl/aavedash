@@ -12,7 +12,8 @@ type MorphoAsset = {
   symbol: string;
   address: string;
   decimals: number;
-  priceUsd: number | null;
+  price?: { usd: number | null } | null;
+  priceUsd?: number | null;
 };
 
 type MorphoMarketState = {
@@ -21,21 +22,32 @@ type MorphoMarketState = {
   supplyApy: number;
 };
 
-export type RawMorphoMarketPosition = {
-  market: {
-    uniqueKey: string;
-    loanAsset: MorphoAsset;
-    collateralAsset: MorphoAsset | null;
-    oracleAddress: string;
-    irmAddress: string;
-    lltv: string;
-    state: MorphoMarketState;
-  };
+type MorphoMarketPositionState = {
   borrowAssets: string;
   borrowAssetsUsd: number | null;
   supplyAssets: string;
   supplyAssetsUsd: number | null;
   collateral: string;
+};
+
+export type RawMorphoMarketPosition = {
+  market: {
+    marketId?: string;
+    uniqueKey?: string;
+    loanAsset: MorphoAsset;
+    collateralAsset: MorphoAsset | null;
+    oracle?: { address: string } | null;
+    oracleAddress?: string;
+    irmAddress: string;
+    lltv: string;
+    state: MorphoMarketState;
+  };
+  state?: MorphoMarketPositionState;
+  borrowAssets?: string;
+  borrowAssetsUsd?: number | null;
+  supplyAssets?: string;
+  supplyAssetsUsd?: number | null;
+  collateral?: string;
 };
 
 type RawMorphoVault = {
@@ -45,6 +57,7 @@ type RawMorphoVault = {
   asset: MorphoAsset;
   avgApy?: number | null;
   avgNetApy?: number | null;
+  avgNetApyExcludingRewards?: number | null;
   state?: {
     apy: number | null;
     netApy: number | null;
@@ -85,20 +98,26 @@ const MORPHO_POSITIONS_QUERY = `
       address
       marketPositions {
         market {
-          uniqueKey
+          marketId
           loanAsset {
             symbol
             address
             decimals
-            priceUsd
+            price {
+              usd
+            }
           }
           collateralAsset {
             symbol
             address
             decimals
-            priceUsd
+            price {
+              usd
+            }
           }
-          oracleAddress
+          oracle {
+            address
+          }
           irmAddress
           lltv
           state {
@@ -107,11 +126,13 @@ const MORPHO_POSITIONS_QUERY = `
             supplyApy
           }
         }
-        borrowAssets
-        borrowAssetsUsd
-        supplyAssets
-        supplyAssetsUsd
-        collateral
+        state {
+          borrowAssets
+          borrowAssetsUsd
+          supplyAssets
+          supplyAssetsUsd
+          collateral
+        }
       }
       vaultV2Positions {
         vault {
@@ -122,10 +143,12 @@ const MORPHO_POSITIONS_QUERY = `
             symbol
             address
             decimals
-            priceUsd
+            price {
+              usd
+            }
           }
-          avgApy
           avgNetApy
+          avgNetApyExcludingRewards
         }
         assets
         assetsUsd
@@ -140,7 +163,9 @@ const MORPHO_POSITIONS_QUERY = `
             symbol
             address
             decimals
-            priceUsd
+            price {
+              usd
+            }
           }
           state {
             apy
@@ -166,19 +191,34 @@ function parseAmount(raw: string, decimals: number): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+function assetPriceUsd(asset: MorphoAsset): number | null {
+  return asset.price?.usd ?? asset.priceUsd ?? null;
+}
+
+function positionState(pos: RawMorphoMarketPosition): MorphoMarketPositionState {
+  return {
+    borrowAssets: pos.state?.borrowAssets ?? pos.borrowAssets ?? '0',
+    borrowAssetsUsd: pos.state?.borrowAssetsUsd ?? pos.borrowAssetsUsd ?? null,
+    supplyAssets: pos.state?.supplyAssets ?? pos.supplyAssets ?? '0',
+    supplyAssetsUsd: pos.state?.supplyAssetsUsd ?? pos.supplyAssetsUsd ?? null,
+    collateral: pos.state?.collateral ?? pos.collateral ?? '0',
+  };
+}
+
 /**
  * Resolve USD price and value for a position. Prefers the position-level USD
  * total (e.g. `borrowAssetsUsd`) as the source of truth, back-calculating the
- * per-unit price when `asset.priceUsd` is null. This avoids zeroing out debt or
- * collateral when the per-asset price field is missing.
+ * per-unit price when `asset.price.usd` is null. This avoids zeroing out debt
+ * or vault assets when their aggregate USD field is available.
  */
 function resolveUsd(
   asset: MorphoAsset,
   amount: number,
   positionUsd: number | null,
 ): { usdPrice: number; usdValue: number } {
-  if (asset.priceUsd != null) {
-    return { usdPrice: asset.priceUsd, usdValue: amount * asset.priceUsd };
+  const priceUsd = assetPriceUsd(asset);
+  if (priceUsd != null) {
+    return { usdPrice: priceUsd, usdValue: amount * priceUsd };
   }
   if (positionUsd != null && positionUsd > 0) {
     return { usdPrice: amount > 0 ? positionUsd / amount : 0, usdValue: positionUsd };
@@ -190,12 +230,10 @@ function buildCollateralPosition(pos: RawMorphoMarketPosition, lltv: number): As
   const asset = pos.market.collateralAsset;
   if (!asset) return null;
 
-  const amount = parseAmount(pos.collateral, asset.decimals);
+  const amount = parseAmount(positionState(pos).collateral, asset.decimals);
   if (amount <= 0) return null;
 
-  // Collateral has no position-level USD field; fall back to supplyAssetsUsd
-  // only when the collateral and supply sides refer to the same asset context.
-  const { usdPrice, usdValue } = resolveUsd(asset, amount, pos.supplyAssetsUsd);
+  const { usdPrice, usdValue } = resolveUsd(asset, amount, null);
   return {
     symbol: asset.symbol.toUpperCase(),
     address: asset.address.toLowerCase(),
@@ -206,17 +244,19 @@ function buildCollateralPosition(pos: RawMorphoMarketPosition, lltv: number): As
     collateralEnabled: true,
     maxLTV: lltv,
     liqThreshold: lltv,
-    supplyRate: pos.market.state.supplyApy,
+    // Morpho Blue collateral is not supplied to the loan-asset pool and does not earn supply APY.
+    supplyRate: 0,
     borrowRate: 0,
   };
 }
 
 function buildBorrowPosition(pos: RawMorphoMarketPosition): AssetPosition | null {
   const asset = pos.market.loanAsset;
-  const amount = parseAmount(pos.borrowAssets, asset.decimals);
+  const state = positionState(pos);
+  const amount = parseAmount(state.borrowAssets, asset.decimals);
   if (amount <= 0) return null;
 
-  const { usdPrice, usdValue } = resolveUsd(asset, amount, pos.borrowAssetsUsd);
+  const { usdPrice, usdValue } = resolveUsd(asset, amount, state.borrowAssetsUsd);
   return {
     symbol: asset.symbol.toUpperCase(),
     address: asset.address.toLowerCase(),
@@ -234,6 +274,9 @@ function buildBorrowPosition(pos: RawMorphoMarketPosition): AssetPosition | null
 
 function buildMorphoMarketLoans(positions: RawMorphoMarketPosition[]): LoanPosition[] {
   return positions.flatMap((pos): LoanPosition[] => {
+    const marketId = pos.market.marketId ?? pos.market.uniqueKey;
+    if (!marketId) return [];
+
     const lltv = fromWad(pos.market.lltv);
     const collateral = buildCollateralPosition(pos, lltv);
     const borrow = buildBorrowPosition(pos);
@@ -249,20 +292,22 @@ function buildMorphoMarketLoans(positions: RawMorphoMarketPosition[]): LoanPosit
 
     const collateralSymbol = pos.market.collateralAsset?.symbol.toUpperCase() ?? '?';
     const loanSymbol = pos.market.loanAsset.symbol.toUpperCase();
+    const oracleAddress = pos.market.oracle?.address ?? pos.market.oracleAddress;
 
-    const morphoMarketParams: MorphoMarketParams | undefined = pos.market.collateralAsset
-      ? {
-          loanToken: pos.market.loanAsset.address.toLowerCase(),
-          collateralToken: pos.market.collateralAsset.address.toLowerCase(),
-          oracle: pos.market.oracleAddress.toLowerCase(),
-          irm: pos.market.irmAddress.toLowerCase(),
-          lltv: pos.market.lltv,
-        }
-      : undefined;
+    const morphoMarketParams: MorphoMarketParams | undefined =
+      pos.market.collateralAsset && oracleAddress
+        ? {
+            loanToken: pos.market.loanAsset.address.toLowerCase(),
+            collateralToken: pos.market.collateralAsset.address.toLowerCase(),
+            oracle: oracleAddress.toLowerCase(),
+            irm: pos.market.irmAddress.toLowerCase(),
+            lltv: pos.market.lltv,
+          }
+        : undefined;
 
     return [
       {
-        id: pos.market.uniqueKey,
+        id: marketId,
         marketName: `morpho_${collateralSymbol}_${loanSymbol}`,
         borrowed,
         supplied,
@@ -286,7 +331,7 @@ function buildMorphoVaultPosition(
 
   if (usdValue < MIN_POSITION_USD && amount < MIN_POSITION_USD) return [];
 
-  const apy = vault.avgApy ?? vault.state?.apy ?? 0;
+  const apy = vault.avgNetApyExcludingRewards ?? vault.avgApy ?? vault.state?.apy ?? 0;
   const netApy = vault.avgNetApy ?? vault.state?.netApy ?? apy;
   const asset: AssetPosition = {
     symbol: vault.asset.symbol.toUpperCase(),

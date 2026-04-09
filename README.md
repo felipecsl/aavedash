@@ -26,6 +26,7 @@ A React + Vite dashboard that auto-loads Aave loans, Morpho Blue market position
 - Top-level portfolio metrics roll up all detected positions:
   - Loan-risk metrics stay loan-only (average health factor, borrow power used, repay coverage)
   - Asset/carry metrics include Morpho vault deposits (total assets, net worth, supply APY, net earnings, net APY)
+  - Morpho Blue market collateral is treated as risk collateral only and does not earn the market supply APY
 - Fully paid-off / dust positions with effectively zero USD exposure are filtered out.
 - Portfolio average HF color bands:
   - `HF > 2.2`: normal operation (green)
@@ -38,7 +39,7 @@ A React + Vite dashboard that auto-loads Aave loans, Morpho Blue market position
   - Health Factor
   - Liquidation price (primary-collateral approximation)
   - LTV, leverage, borrow headroom
-  - Carry / Net APY summary
+  - Carry / Net APY summary, including loan net earnings offset by Morpho vault net income
   - Separate Morpho vault table with deposited asset amount, USD value, net APY, and shares
   - Aave interest-rate model chart for the selected borrowed asset, including current utilization and the reserve kink
   - Borrow APR history chart for the selected borrowed asset, built from locally stored reserve telemetry samples
@@ -213,7 +214,7 @@ The watchdog monitors loan health and can execute an atomic on-chain rescue when
 1. User enters an Ethereum wallet address, provides it via query string (`wallet`, `address`, or `walletAddress`), or reloads with the last saved wallet from browser storage.
 2. App queries Aave subgraph data for supported markets.
 3. Aave reserves are grouped into loan positions per market; Morpho market loans and Morpho vault deposits are fetched from Morpho's GraphQL API.
-4. Token prices are fetched from CoinGecko for Aave assets, while Morpho positions use API-provided pricing or USD back-calculation.
+4. Token prices are fetched from CoinGecko for Aave assets, while Morpho positions use API-provided pricing or USD back-calculation for borrowed assets and vault deposits.
 5. Portfolio-level aggregate metrics are computed across all active positions, with loan-risk metrics kept separate from supply-only vault assets.
 6. Detailed risk metrics are computed and rendered for the selected loan, while Morpho vaults render in a separate table.
 7. When the API server is available, the dashboard also reads on-chain reserve telemetry for the selected borrowed asset and stores periodic borrow APR samples in browser `localStorage` to build the history chart over time.

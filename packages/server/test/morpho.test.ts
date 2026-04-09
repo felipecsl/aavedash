@@ -153,7 +153,7 @@ describe('fetchFromMorphoApi', () => {
     // LLTV conversion: 860000000000000000 / 1e18 = 0.86
     assert.ok(Math.abs(collateral.maxLTV - 0.86) < 1e-10);
     assert.ok(Math.abs(collateral.liqThreshold - 0.86) < 1e-10);
-    assert.equal(collateral.supplyRate, 0.032);
+    assert.equal(collateral.supplyRate, 0);
 
     // Borrow
     const borrow = loan.borrowed[0];
@@ -215,13 +215,11 @@ describe('fetchFromMorphoApi', () => {
     assert.equal(loans.length, 0);
   });
 
-  it('falls back to position-level USD when priceUsd is null', async () => {
+  it('falls back to position-level USD for borrowed assets when priceUsd is null', async () => {
     const pos = samplePosition();
     pos.market.loanAsset.priceUsd = null;
-    pos.market.collateralAsset!.priceUsd = null;
     // borrowAssetsUsd is the position-level fallback
     pos.borrowAssetsUsd = 500;
-    pos.supplyAssetsUsd = 3000;
     const mockResponse = makeMorphoApiResponse([pos]);
     globalThis.fetch = async () =>
       new Response(JSON.stringify(mockResponse), {
@@ -237,9 +235,61 @@ describe('fetchFromMorphoApi', () => {
     assert.equal(loan.borrowed[0].usdValue, 500);
     assert.equal(loan.borrowed[0].usdPrice, 1); // 500 / 500
 
-    // Collateral: usdValue from supplyAssetsUsd fallback, price back-calculated
+    // Collateral: USD value comes from the collateral asset price, not supplyAssetsUsd.
     assert.equal(loan.supplied[0].usdValue, 3000);
-    assert.equal(loan.supplied[0].usdPrice, 3000); // 3000 / 1
+    assert.equal(loan.supplied[0].usdPrice, 3000);
+  });
+
+  it('parses Morpho replacement fields without deprecated market and asset fields', async () => {
+    const pos = samplePosition();
+    const replacementPosition: RawMorphoMarketPosition = {
+      market: {
+        marketId: pos.market.uniqueKey,
+        loanAsset: {
+          symbol: pos.market.loanAsset.symbol,
+          address: pos.market.loanAsset.address,
+          decimals: pos.market.loanAsset.decimals,
+          price: { usd: pos.market.loanAsset.priceUsd ?? null },
+        },
+        collateralAsset: {
+          symbol: pos.market.collateralAsset!.symbol,
+          address: pos.market.collateralAsset!.address,
+          decimals: pos.market.collateralAsset!.decimals,
+          price: { usd: pos.market.collateralAsset!.priceUsd ?? null },
+        },
+        oracle: { address: pos.market.oracleAddress! },
+        irmAddress: pos.market.irmAddress,
+        lltv: pos.market.lltv,
+        state: pos.market.state,
+      },
+      state: {
+        borrowAssets: pos.borrowAssets!,
+        borrowAssetsUsd: pos.borrowAssetsUsd!,
+        supplyAssets: pos.supplyAssets!,
+        supplyAssetsUsd: pos.supplyAssetsUsd!,
+        collateral: pos.collateral!,
+      },
+    };
+    const mockResponse = makeMorphoApiResponse([replacementPosition]);
+    let query = '';
+    globalThis.fetch = async (_url, init) => {
+      query = String(JSON.parse(String(init?.body)).query);
+      return new Response(JSON.stringify(mockResponse), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+
+    const loans = await fetchFromMorphoApi(WALLET);
+
+    assert.equal(loans.length, 1);
+    assert.equal(loans[0].id, '0xabc123');
+    assert.equal(loans[0].morphoMarketParams?.oracle, '0x0000000000000000000000000000000000000001');
+    assert.equal(loans[0].borrowed[0].usdValue, 500);
+    assert.equal(loans[0].supplied[0].usdValue, 3000);
+    assert.doesNotMatch(query, /\buniqueKey\b/);
+    assert.doesNotMatch(query, /\boracleAddress\b/);
+    assert.doesNotMatch(query, /\bpriceUsd\b/);
   });
 
   it('throws on API error', async () => {
@@ -398,7 +448,7 @@ describe('Morpho LoanPosition works with computeLoanMetrics', () => {
           collateralEnabled: true,
           maxLTV: 0.86,
           liqThreshold: 0.86,
-          supplyRate: 0.032,
+          supplyRate: 0,
           borrowRate: 0,
         },
       ],
@@ -413,6 +463,10 @@ describe('Morpho LoanPosition works with computeLoanMetrics', () => {
     // LTV = 500 / 3000 = 0.1667
     assert.ok(Math.abs(metrics.ltv - 500 / 3000) < 0.001);
     assert.equal(metrics.primaryCollateralSymbol, 'WETH');
+    assert.equal(metrics.supplyEarnUSD, 0);
+    assert.equal(metrics.borrowCostUSD, 22.5);
+    assert.equal(metrics.netEarnUSD, -22.5);
+    assert.ok(Math.abs(metrics.netAPYOnEquity - -22.5 / 2500) < 0.0001);
   });
 });
 
@@ -447,7 +501,7 @@ describe('computePortfolioSummary with Morpho vaults', () => {
           collateralEnabled: true,
           maxLTV: 0.86,
           liqThreshold: 0.86,
-          supplyRate: 0.032,
+          supplyRate: 0,
           borrowRate: 0,
         },
       ],
@@ -500,13 +554,17 @@ describe('computePortfolioSummary with Morpho vaults', () => {
     assert.ok(Math.abs(summary.averageHealthFactor - 5.16) < 0.01);
     assert.ok(Math.abs(summary.borrowPowerUsed - 500 / (3000 * 0.86)) < 0.0001);
     assert.equal(summary.repayCoverage, 0.5);
-    const expectedSupplyEarn = 3000 * 0.032 + 2500 * 0.036;
+    const expectedSupplyEarn = 2500 * 0.036;
     const expectedDeployEarn = 500 * DEFAULT_R_DEPLOY;
     assert.ok(Math.abs(summary.totalSupplyEarn - expectedSupplyEarn) < 0.0001);
     assert.ok(Math.abs(summary.totalBorrowCost - 22.5) < 0.0001);
     assert.ok(Math.abs(summary.totalDeployEarn - expectedDeployEarn) < 0.0001);
     assert.ok(
       Math.abs(summary.totalNetEarn - (expectedSupplyEarn - 22.5 + expectedDeployEarn)) < 0.0001,
+    );
+    assert.ok(Math.abs(summary.totalLoanNetEarn - -22.5) < 0.0001);
+    assert.ok(
+      Math.abs(summary.totalLoanNetEarnAfterVaults - (-22.5 + expectedSupplyEarn)) < 0.0001,
     );
   });
 
