@@ -424,12 +424,12 @@ export default function App() {
   return (
     <ToastProvider value={{ pushToast }}>
       <div className="min-h-screen w-full bg-background px-4 py-6 text-foreground antialiased md:px-6 md:py-8">
-        <main className="mx-auto max-w-7xl">
+        <main className="mx-auto max-w-[1280px]">
           <header className="flex items-end justify-between gap-4 max-[980px]:flex-col max-[980px]:items-start">
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight">aash</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">DeFi Loan Health Dashboard</h1>
               <p className="mt-1.5 text-sm text-muted-foreground">
-                Using public blockchain data and price APIs.
+                Auto-fetched from wallet address using public blockchain data and price APIs.
               </p>
             </div>
             <ServerSettings />
@@ -743,7 +743,7 @@ export default function App() {
                     </p>
                   )}
 
-                  <section className="mt-2 grid gap-4 grid-cols-[minmax(320px,0.95fr)_minmax(0,2fr)] max-[980px]:grid-cols-1">
+                  <section className="mt-2 grid gap-4 [grid-template-columns:minmax(320px,0.95fr)_minmax(0,2fr)] max-[980px]:grid-cols-1">
                     <Card>
                       <CardHeader>
                         <CardTitle className="inline-flex items-center gap-2">

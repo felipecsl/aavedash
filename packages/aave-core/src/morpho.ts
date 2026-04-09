@@ -83,7 +83,7 @@ const MORPHO_POSITIONS_QUERY = `
   query UserPositions($address: String!, $chainId: Int!) {
     userByAddress(chainId: $chainId, address: $address) {
       address
-        marketPositions {
+      marketPositions {
         market {
           uniqueKey
           loanAsset {
@@ -332,6 +332,18 @@ function buildMorphoVaultPositions(positions: RawMorphoVaultPosition[]): MorphoV
   );
 }
 
+function dedupeMorphoVaultPositions(vaults: MorphoVaultPosition[]): MorphoVaultPosition[] {
+  const byAddress = new Map<string, MorphoVaultPosition>();
+  for (const vault of vaults) {
+    const address = vault.vaultAddress.toLowerCase();
+    const existing = byAddress.get(address);
+    if (!existing || vault.totalAssetsUsd > existing.totalAssetsUsd) {
+      byAddress.set(address, vault);
+    }
+  }
+  return Array.from(byAddress.values());
+}
+
 export async function fetchMorphoPositions(
   wallet: string,
   chainId: number = 1,
@@ -362,10 +374,10 @@ export async function fetchMorphoPositions(
 
   return {
     marketLoans: buildMorphoMarketLoans(marketPositions),
-    vaultPositions: [
+    vaultPositions: dedupeMorphoVaultPositions([
       ...buildMorphoVaultV2Positions(vaultV2Positions),
       ...buildMorphoVaultPositions(vaultPositions),
-    ],
+    ]),
   };
 }
 

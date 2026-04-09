@@ -345,6 +345,26 @@ describe('fetchFromMorphoApi', () => {
     assert.equal(positions.vaultPositions[0].totalAssets, 2500);
     assert.equal(positions.vaultPositions[0].netApy, 0.036);
   });
+
+  it('deduplicates the same vault returned by V2 and legacy APIs', async () => {
+    const mockResponse = makeMorphoApiResponse(
+      [],
+      [sampleVaultPosition()],
+      [sampleVaultV2Position()],
+    );
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify(mockResponse), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+
+    const positions = await fetchMorphoPositions(WALLET);
+    assert.equal(positions.vaultPositions.length, 1);
+    assert.equal(
+      positions.vaultPositions[0].vaultAddress,
+      '0xbeef01735c132ada46aa9aa4c54623caa92a64cb',
+    );
+  });
 });
 
 describe('Morpho LoanPosition works with computeLoanMetrics', () => {
@@ -480,8 +500,14 @@ describe('computePortfolioSummary with Morpho vaults', () => {
     assert.ok(Math.abs(summary.averageHealthFactor - 5.16) < 0.01);
     assert.ok(Math.abs(summary.borrowPowerUsed - 500 / (3000 * 0.86)) < 0.0001);
     assert.equal(summary.repayCoverage, 0.5);
-    assert.ok(Math.abs(summary.totalSupplyEarn - (3000 * 0.032 + 2500 * 0.036)) < 0.0001);
+    const expectedSupplyEarn = 3000 * 0.032 + 2500 * 0.036;
+    const expectedDeployEarn = 500 * DEFAULT_R_DEPLOY;
+    assert.ok(Math.abs(summary.totalSupplyEarn - expectedSupplyEarn) < 0.0001);
     assert.ok(Math.abs(summary.totalBorrowCost - 22.5) < 0.0001);
+    assert.ok(Math.abs(summary.totalDeployEarn - expectedDeployEarn) < 0.0001);
+    assert.ok(
+      Math.abs(summary.totalNetEarn - (expectedSupplyEarn - 22.5 + expectedDeployEarn)) < 0.0001,
+    );
   });
 
   it('supports vault-only portfolios', () => {

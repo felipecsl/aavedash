@@ -300,7 +300,7 @@ export function computePortfolioSummary(
     vaults.reduce((sum, vault) => sum + vault.totalAssetsUsd * vault.netApy, 0);
   const totalBorrowCost = metrics.reduce((sum, item) => sum + item.borrowCostUSD, 0);
   const totalDeployEarn = metrics.reduce((sum, item) => sum + item.deployEarnUSD, 0);
-  const totalNetEarn = totalSupplyEarn - totalBorrowCost;
+  const totalNetEarn = totalSupplyEarn - totalBorrowCost + totalDeployEarn;
   const totalMaxBorrow = metrics.reduce((sum, item) => sum + item.maxBorrowByLTV, 0);
 
   const finiteHealthFactors = metrics
