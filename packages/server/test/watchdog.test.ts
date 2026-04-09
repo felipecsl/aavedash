@@ -237,6 +237,44 @@ test('live mode executes rescue and records tx hash', async () => {
   assert.match(messages[0]!, /Atomic rescue executed/);
 });
 
+test('waitForReceiptOrReplacement treats successful equivalent replacement as success', async () => {
+  const { watchdog } = createWatchdog(createConfig({ dryRun: false }));
+  const expectedData = '0xdeadbeef';
+  const replacementHash = '0xreplace123';
+  const receipt = { status: 1, hash: replacementHash };
+  const sentTx = {
+    wait: async () => {
+      const error = new Error('transaction was replaced') as Error & {
+        code: string;
+        cancelled: boolean;
+        reason: string;
+        replacement: { to: string; data: string; receipt: { status: number; hash: string } };
+      };
+      error.code = 'TRANSACTION_REPLACED';
+      error.cancelled = true;
+      error.reason = 'replaced';
+      error.replacement = {
+        to: RESCUE_CONTRACT,
+        data: expectedData,
+        receipt,
+      };
+      throw error;
+    },
+  };
+
+  const resolvedReceipt = await (
+    watchdog as unknown as {
+      waitForReceiptOrReplacement: (
+        tx: typeof sentTx,
+        expectedTo: string,
+        expectedData: string,
+      ) => Promise<typeof receipt>;
+    }
+  ).waitForReceiptOrReplacement(sentTx, RESCUE_CONTRACT, expectedData);
+
+  assert.equal(resolvedReceipt.hash, replacementHash);
+});
+
 test('cooldown prevents immediate re-execution', async () => {
   const { watchdog } = createWatchdog(createConfig({ dryRun: true }));
 

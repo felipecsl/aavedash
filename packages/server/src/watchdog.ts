@@ -25,6 +25,7 @@ const MORPHO_RESCUE_INTERFACE = new Interface([
 ]);
 
 const MIN_ETH_FOR_GAS = 0.005;
+const TELEGRAM_MESSAGE_LIMIT = 3900;
 export type WatchdogLogEntry = {
   timestamp: number;
   loanId: string;
@@ -522,12 +523,12 @@ export class Watchdog {
     ]);
 
     const tx = await wallet.sendTransaction({ to: rescueContract, data });
-    const receipt = await tx.wait();
+    const receipt = await this.waitForReceiptOrReplacement(tx, rescueContract, data);
     if (!receipt || receipt.status === 0) {
       throw new Error(`Transaction reverted: ${tx.hash}`);
     }
 
-    return tx.hash;
+    return receipt.hash;
   }
 
   private async previewResultingHfMorpho(
@@ -582,12 +583,27 @@ export class Watchdog {
     ]);
 
     const tx = await wallet.sendTransaction({ to: rescueContract, data });
-    const receipt = await tx.wait();
+    const receipt = await this.waitForReceiptOrReplacement(tx, rescueContract, data);
     if (!receipt || receipt.status === 0) {
       throw new Error(`Transaction reverted: ${tx.hash}`);
     }
 
-    return tx.hash;
+    return receipt.hash;
+  }
+
+  private async waitForReceiptOrReplacement(
+    tx: Awaited<ReturnType<Wallet['sendTransaction']>>,
+    expectedTo: string,
+    expectedData: string,
+  ) {
+    try {
+      return await tx.wait();
+    } catch (error) {
+      if (this.isSuccessfulEquivalentReplacement(error, expectedTo, expectedData)) {
+        return error.replacement.receipt;
+      }
+      throw new Error(this.formatTransactionError(error), { cause: error });
+    }
   }
 
   private async getTokenBalance(
@@ -657,8 +673,64 @@ export class Watchdog {
   private async notify(message: string): Promise<void> {
     const chatId = this.getChatId();
     if (chatId) {
-      await this.telegram.sendMessage(chatId, message);
+      const truncated =
+        message.length > TELEGRAM_MESSAGE_LIMIT
+          ? `${message.slice(0, TELEGRAM_MESSAGE_LIMIT - 1)}…`
+          : message;
+      await this.telegram.sendMessage(chatId, truncated);
     }
+  }
+
+  private isSuccessfulEquivalentReplacement(
+    error: unknown,
+    expectedTo: string,
+    expectedData: string,
+  ): error is {
+    code: string;
+    replacement: {
+      to?: string | null;
+      data?: string | null;
+      receipt?: { status?: number; hash: string } | null;
+    };
+  } {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'TRANSACTION_REPLACED') {
+      return false;
+    }
+
+    const replacement = (
+      error as {
+        replacement?: {
+          to?: string | null;
+          data?: string | null;
+          receipt?: { status?: number; hash: string } | null;
+        };
+      }
+    ).replacement;
+    return Boolean(
+      replacement?.receipt?.status === 1 &&
+      replacement.to?.toLowerCase() === expectedTo.toLowerCase() &&
+      replacement.data === expectedData,
+    );
+  }
+
+  private formatTransactionError(error: unknown): string {
+    if (error instanceof Error && 'code' in error && error.code === 'TRANSACTION_REPLACED') {
+      const replacement = (
+        error as {
+          cancelled?: boolean;
+          reason?: string;
+          replacement?: { hash?: string | null };
+        }
+      ).replacement;
+      const reason =
+        (error as { reason?: string }).reason ??
+        ((error as { cancelled?: boolean }).cancelled ? 'cancelled' : 'replaced');
+      return replacement?.hash
+        ? `Transaction replaced (${reason}): ${replacement.hash}`
+        : `Transaction replaced (${reason})`;
+    }
+
+    return error instanceof Error ? error.message : 'Unknown error';
   }
 
   private addLog(entry: WatchdogLogEntry): void {

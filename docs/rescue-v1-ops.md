@@ -210,6 +210,18 @@ Save the deployed contract address from the output.
    The approval must be signed by the monitored wallet / rescue contract owner, not by the deployer,
    because the rescue contract pulls the loan token from `params.user` via `transferFrom(...)`.
 
+   You can also do this from the etherscan UI at https://etherscan.io/address/<borrowed-token-address>#writeProxyContract
+
+   If you want to use Etherscan’s Write Contract UI instead:
+   1. Open the USDC contract on Etherscan.
+   2. Go to Contract -> Write as Proxy.
+   3. Connect your wallet through MetaMask/Rabby with the Trezor account selected.
+   4. Use approve(address spender, uint256 amount).
+   5. Enter:
+      - spender: <deployed-address>
+      - amount: 115792089237316195423570985008687907853269984665640564039457584007913129639935 for unlimited, or e.g. 1000000000 for 1000 USDC
+   6. Submit and confirm on the Trezor.
+
 4. Verify the supported market params match the monitored loan exactly:
    - `loanToken`
    - `collateralToken`
