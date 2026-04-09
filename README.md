@@ -14,14 +14,14 @@ A React + Vite dashboard that auto-loads Aave and Morpho Blue loan positions fro
 ## Features
 
 - Wallet-only input UX.
-- Optional query-string wallet input (`wallet`, `address`, or `walletAddress`) with auto-fetch on load when valid.
-- Last successfully loaded wallet is saved in `localStorage` and auto-used on reload when query params are absent.
+- Wallet details auto-fetch on load when valid.
+- Last successfully loaded wallet is saved in browser `localStorage` and auto-used on reload when query params are absent.
 - Manual `Refresh` button to reload the current dashboard data on demand.
 - Automatic refresh every 120 seconds after a wallet is loaded.
 - Multi-market support:
   - Aave V3: `proto_mainnet_v3`, `proto_lido_v3`
   - Morpho Blue: isolated markets (fetched from Morpho GraphQL API)
-- Tabs for multiple loans/borrowed assets.
+- Support for multiple loans/borrowed assets.
 - Top-level portfolio metrics across all active loans (average health factor, weighted APYs, total debt/collateral/net worth).
 - Fully paid-off / dust positions with effectively zero USD exposure are filtered out.
 - Portfolio average HF color bands:
@@ -31,7 +31,6 @@ A React + Vite dashboard that auto-loads Aave and Morpho Blue loan positions fro
   - `HF < 1.5`: mandatory deleveraging (red)
 - Auto-fetched collateral/borrow amounts and market metadata.
 - Price enrichment with CoinGecko, including symbol aliases for wrapped assets such as `cbBTC`.
-- Server logs normalize mixed-case reserve symbols before checking the CoinGecko price map, and loan collateral logs use each asset's resolved USD price so wrapped assets such as `cbBTC` and `wstETH` do not show false `$MISSING` entries.
 - Dashboard analytics:
   - Health Factor
   - Liquidation price (primary-collateral approximation)

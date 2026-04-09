@@ -12,6 +12,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Separator } from './ui/separator';
+import { useToast } from './ui/toast-context';
 import { HfSlider } from './HfSlider';
 import { ZoneSlider } from './ZoneSlider';
 
@@ -171,6 +172,7 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
   const [newWalletAddress, setNewWalletAddress] = useState('');
   const [newWalletLabel, setNewWalletLabel] = useState('');
+  const { pushToast } = useToast();
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -199,15 +201,17 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
 
   const saveConfig = async (updated: AlertConfig) => {
     if (!backendAvailable) {
-      setError(
-        'Monitor server is offline. Start `yarn dev:all` (or `yarn dev:server`) to save settings.',
-      );
+      const message =
+        'Monitor server is offline. Start `yarn dev:all` (or `yarn dev:server`) to save settings.';
+      setError(message);
+      pushToast({ title: message, variant: 'error' });
       return;
     }
 
     const validationError = validateConfig(updated);
     if (validationError) {
       setError(validationError);
+      pushToast({ title: validationError, variant: 'error' });
       return;
     }
 
@@ -230,8 +234,11 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
       const data = (await response.json()) as AlertConfig;
       setConfig(normalizeConfig(data));
       setError('');
+      pushToast({ title: 'Server settings saved.', variant: 'success' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save config');
+      const message = err instanceof Error ? err.message : 'Failed to save config';
+      setError(message);
+      pushToast({ title: message, variant: 'error' });
     }
   };
 

@@ -79,6 +79,7 @@ Frontend notes:
 - On page load, wallet resolution order is: query string (`wallet`, `address`, `walletAddress`) first, then saved local storage wallet.
 - The portfolio card labeled `Repay coverage` is based on wallet-held balances of tokens that also appear in the loan's borrowed asset set; it does not include unrelated wallet assets.
 - The utilization curve and borrow APR history charts depend on the Express API server for on-chain reserve telemetry. Without `yarn dev:server` (or the unified Docker/server runtime), those charts fall back to an unavailable message.
+- Server settings saves surface toast feedback in the dashboard for both successful updates and failed save attempts.
 
 ## Architecture
 
