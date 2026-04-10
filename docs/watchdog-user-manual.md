@@ -73,9 +73,16 @@ Live mode requires:
 Live mode additionally requires:
 
 - `morphoRescueContract` configured (separate contract from the Aave rescue)
+- the configured Morpho rescue contract has the monitored market enabled via `setSupportedMarket(...)`
 - executor address is authorized by the Morpho rescue contract
 - monitored wallet has loan token balance (e.g. USDC)
 - monitored wallet has approved `morphoRescueContract` to pull the loan token
+
+Operational note:
+
+- `morphoRescueContract` is one contract address for Morpho rescue, not one contract per market.
+- One `MorphoAtomicRepayV1` contract can support multiple Morpho markets for the same monitored wallet / executor pair.
+- Enable additional markets on the existing contract with `setSupportedMarket(...)`, typically from Etherscan `Write Contract` signed by the owner wallet.
 
 ## Dry Run vs Live
 

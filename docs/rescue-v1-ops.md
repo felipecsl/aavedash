@@ -183,6 +183,10 @@ forge script script/DeployMorphoAtomicRepayV1.s.sol:DeployMorphoAtomicRepayV1 \
 
 Save the deployed contract address from the output.
 
+The deployed `MorphoAtomicRepayV1` contract is not limited to that first market. It can support
+multiple Morpho markets for the same monitored wallet / executor pair by enabling additional
+market tuples with `setSupportedMarket(...)`.
+
 ## Post-Deploy Morpho
 
 1. Save deployed `MorphoAtomicRepayV1` address.
@@ -229,6 +233,25 @@ Save the deployed contract address from the output.
    - `irm`
    - `lltv`
 
+   To add another Morpho market to the same rescue contract later, enable it on the existing
+   contract instead of deploying a new one. The simplest path for hardware-wallet owners is
+   Etherscan `Write Contract`:
+   1. Open the verified rescue contract on Etherscan.
+   2. Go to `Contract` -> `Write Contract`.
+   3. Connect MetaMask or Rabby with the owner wallet selected.
+   4. Call `setSupportedMarket((address,address,address,address,uint256),bool)`.
+   5. Enter the exact Morpho market tuple:
+      - `loanToken`
+      - `collateralToken`
+      - `oracle`
+      - `irm`
+      - `lltv`
+      - `enabled = true`
+   6. Sign with the owner wallet.
+
+   This call is `onlyOwner`, not executor-authorized, so the connected wallet must match the
+   contract `owner()`.
+
 5. Verify the contract source on Etherscan:
 
    ```bash
@@ -245,8 +268,8 @@ Save the deployed contract address from the output.
    should resolve the constructor from the creation bytecode correctly.
 
    The current implementation does not auto-discover or auto-register new Morpho markets on-chain. If the monitored
-   wallet moves to a different market, deploy or reconfigure a rescue contract with that exact market tuple before
-   enabling live mode.
+   wallet moves to a different market, register that exact market tuple on the existing rescue contract before
+   enabling live mode. Deploy a new contract only when the monitored wallet owner or executor model changes.
 
 6. Keep watchdog in dry-run first.
 7. Switch to live mode after validation.

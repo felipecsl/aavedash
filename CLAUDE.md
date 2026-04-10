@@ -66,6 +66,7 @@ Backend server notes:
 - Morpho vault positions are modeled separately from `LoanPosition`; they are supply-only, render in their own dashboard table, and do not participate in HF / borrow-power math.
 - Interest rate / utilization curve charts are not available for Morpho markets (Aave-specific on-chain telemetry).
 - Watchdog rescue supports both Aave and Morpho Blue loans via separate rescue contracts (`rescueContract` for Aave, `morphoRescueContract` for Morpho).
+- A single `MorphoAtomicRepayV1` contract is intended to support multiple Morpho markets for one monitored wallet / executor pair via `setSupportedMarket(...)`; the app config therefore keeps one `morphoRescueContract` address, not a per-market map.
 - Morpho rescue uses the market-specific loan token (resolved from `LoanPosition.morphoMarketParams.loanToken`) to repay debt.
 - Morpho rescue preview/guard math uses accrued borrow interest and Morpho's virtual-share conversion instead of raw stale market totals.
 - Rescue contracts support a split-role model: `owner` is the monitored wallet that funds the repay and grants allowance, while `executor` is the hot wallet allowed to submit `rescue(...)`.
@@ -73,6 +74,7 @@ Backend server notes:
 - Debt-token approval must still be signed by the monitored wallet / contract owner, because the rescue contract calls `transferFrom(params.user, ...)`.
 - Watchdog repay caps are configured via `maxRepayAmount` (denominated in the debt token, e.g. 500 USDC).
 - `yarn morpho:market-env <market-url-or-unique-key>` resolves a Morpho market through the public GraphQL API, prints exact `MORPHO_*` exports, and verifies the params hash back to the market `uniqueKey`.
+- Additional Morpho markets are typically enabled from Etherscan `Write Contract` by calling `setSupportedMarket(...)` from the current owner wallet, which works well for MetaMask/Rabby + hardware-wallet signing flows.
 
 Frontend notes:
 

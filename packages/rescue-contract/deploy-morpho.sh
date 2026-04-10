@@ -1,5 +1,11 @@
 set -e
 
+#################### PREREQUISITE ####################
+# Run:
+# `cast wallet import deployer --interactive`
+# to import the deployer private key into your local keystore before running this script.
+######################################################
+
 MARKET="${1:-}"
 DRY_RUN=true
 
@@ -54,11 +60,6 @@ export RESCUE_OWNER=0xEd6965EA279b83B449e4D98F270a709Cf46b7405  # Contract owner
 export RESCUE_EXECUTOR=0x03414113e25e24e35586b3f5b6ea7fbe49a72302 # MHT Hot wallet allowed to submit rescue txs
 export INITIAL_OWNER=0x03414113e25e24e35586b3f5b6ea7fbe49a72302
 
-if [[ -z "${DEPLOYER_PRIVATE_KEY:-}" ]]; then
-  echo "Error: DEPLOYER_PRIVATE_KEY is not set." >&2
-  exit 1
-fi
-
 BROADCAST_FLAG=()
 if [[ "$DRY_RUN" == false ]]; then
   BROADCAST_FLAG=(--broadcast)
@@ -70,4 +71,4 @@ forge script script/DeployMorphoAtomicRepayV1.s.sol:DeployMorphoAtomicRepayV1 \
   --rpc-url $RPC_URL \
   --sig "run()" \
   "${BROADCAST_FLAG[@]}" \
-  --private-key $DEPLOYER_PRIVATE_KEY
+  --account deployer

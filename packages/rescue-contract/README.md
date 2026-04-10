@@ -7,7 +7,7 @@ This package contains the v1 atomic rescue contracts for both Aave and Morpho Bl
 - `src/AaveAtomicRepayV1.sol` - owner-funded, executor-triggered atomic debt repay for Aave
 - `src/MorphoAtomicRepayV1.sol` - owner-funded, executor-triggered atomic debt repay for Morpho Blue
 - `script/DeployAaveAtomicRepayV1.s.sol` - deploy script
-- `script/DeployMorphoAtomicRepayV1.s.sol` - Morpho deploy script
+- `script/DeployMorphoAtomicRepayV1.s.sol` - Morpho deploy script that also enables the first market
 - `test/AaveAtomicRepayV1.t.sol` - unit tests with mocks
 - `test/MorphoAtomicRepayV1.t.sol` - Morpho unit tests with mocks
 
@@ -51,3 +51,15 @@ forge script script/DeployMorphoAtomicRepayV1.s.sol:DeployMorphoAtomicRepayV1 \
 
 If `INITIAL_OWNER` is unset, the script deploys directly with `RESCUE_OWNER` as owner.
 If `RESCUE_EXECUTOR` is unset, it defaults to `INITIAL_OWNER`.
+
+## Morpho Multi-Market Support
+
+`MorphoAtomicRepayV1` is designed to support multiple Morpho markets for the same monitored
+wallet / executor pair. The deploy script enables the first market, and later markets can be
+added on the same contract with `setSupportedMarket(...)`.
+
+Example:
+
+Use Etherscan `Write Contract` on the verified rescue contract and call
+`setSupportedMarket((address,address,address,address,uint256),bool)` from the current owner wallet.
+This works well with MetaMask or Rabby when the owner is backed by a hardware wallet.

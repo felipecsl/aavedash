@@ -146,6 +146,8 @@ contract MorphoAtomicRepayV1Test is Test {
 
     IMorpho.MarketParams internal marketParams;
     bytes32 internal marketId;
+    IMorpho.MarketParams internal secondMarketParams;
+    bytes32 internal secondMarketId;
 
     function setUp() external {
         loanToken = new MockToken();
@@ -166,8 +168,21 @@ contract MorphoAtomicRepayV1Test is Test {
 
         marketId = keccak256(abi.encode(marketParams));
 
+        secondMarketParams = IMorpho.MarketParams({
+            loanToken: address(loanToken),
+            collateralToken: address(collateralToken),
+            oracle: address(new MockMorphoOracle(1.2e36)),
+            irm: address(irm),
+            lltv: 0.9e18
+        });
+
+        secondMarketId = keccak256(abi.encode(secondMarketParams));
+
         vm.prank(owner);
         rescue.setSupportedMarket(marketParams, true);
+
+        vm.prank(owner);
+        rescue.setSupportedMarket(secondMarketParams, true);
 
         loanToken.mint(owner, 1_000_000_000);
         vm.prank(owner);
@@ -186,6 +201,24 @@ contract MorphoAtomicRepayV1Test is Test {
                 totalSupplyShares: 200_000_000,
                 totalBorrowAssets: 70_000_000,
                 totalBorrowShares: 70_000_000,
+                lastUpdate: uint128(block.timestamp),
+                fee: 0
+            })
+        );
+
+        morpho.setPosition(
+            secondMarketId,
+            owner,
+            MockMorpho.PositionData({supplyShares: 0, borrowShares: 50_000_000, collateral: 90_000_000})
+        );
+
+        morpho.setMarket(
+            secondMarketId,
+            MockMorpho.MarketData({
+                totalSupplyAssets: 150_000_000,
+                totalSupplyShares: 150_000_000,
+                totalBorrowAssets: 50_000_000,
+                totalBorrowShares: 50_000_000,
                 lastUpdate: uint128(block.timestamp),
                 fee: 0
             })
@@ -250,6 +283,22 @@ contract MorphoAtomicRepayV1Test is Test {
         assertLt(uint256(borrowSharesAfter), 70_000_000);
     }
 
+    function test_executes_rescue_for_second_supported_market() external {
+        MorphoAtomicRepayV1.RescueParams memory params = MorphoAtomicRepayV1.RescueParams({
+            user: owner,
+            marketParams: secondMarketParams,
+            amount: 10_000_000,
+            minResultingHf: 1.0e18,
+            deadline: block.timestamp + 10
+        });
+
+        vm.prank(executor);
+        rescue.rescue(params);
+
+        (, uint128 borrowSharesAfter,) = morpho.position(secondMarketId, owner);
+        assertLt(uint256(borrowSharesAfter), 50_000_000);
+    }
+
     function test_preview_increases_with_repay_amount() external view {
         uint256 hf0 = rescue.previewResultingHf(marketParams, owner, 0);
         uint256 hf1 = rescue.previewResultingHf(marketParams, owner, 10_000_000);
@@ -274,5 +323,22 @@ contract MorphoAtomicRepayV1Test is Test {
         vm.prank(attacker);
         vm.expectRevert(MorphoAtomicRepayV1.NotOwner.selector);
         rescue.setExecutor(attacker);
+    }
+
+    function test_owner_can_disable_supported_market() external {
+        vm.prank(owner);
+        rescue.setSupportedMarket(secondMarketParams, false);
+
+        MorphoAtomicRepayV1.RescueParams memory params = MorphoAtomicRepayV1.RescueParams({
+            user: owner,
+            marketParams: secondMarketParams,
+            amount: 10_000_000,
+            minResultingHf: 1.0e18,
+            deadline: block.timestamp + 10
+        });
+
+        vm.prank(executor);
+        vm.expectRevert(MorphoAtomicRepayV1.MarketNotSupported.selector);
+        rescue.rescue(params);
     }
 }
