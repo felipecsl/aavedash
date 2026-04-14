@@ -202,6 +202,204 @@ export function UtilizationCurveCard({ reserve }: { reserve: ReserveTelemetry })
   );
 }
 
+// Morpho Blue AdaptiveCurveIRM constants
+const MORPHO_TARGET_UTIL = 0.9;
+const MORPHO_CURVE_STEEPNESS = 4;
+const MORPHO_IRM_SAMPLES = 80;
+
+// Below target: simple linear from 0 → rateAtTarget (matches Morpho dashboard rendering).
+// Above target: steeper slope using the on-chain CURVE_STEEPNESS=4 formula.
+function morphoBorrowRate(rateAtTarget: number, u: number): number {
+  if (u <= MORPHO_TARGET_UTIL) {
+    return rateAtTarget * (u / MORPHO_TARGET_UTIL);
+  }
+  const err = (u - MORPHO_TARGET_UTIL) / (1 - MORPHO_TARGET_UTIL);
+  return rateAtTarget * (1 + MORPHO_CURVE_STEEPNESS * err);
+}
+
+function inferMorphoRateAtTarget(borrowRate: number, utilization: number): number {
+  if (utilization <= MORPHO_TARGET_UTIL) {
+    return utilization > 0 ? borrowRate / (utilization / MORPHO_TARGET_UTIL) : borrowRate;
+  }
+  const err = (utilization - MORPHO_TARGET_UTIL) / (1 - MORPHO_TARGET_UTIL);
+  return borrowRate / (1 + MORPHO_CURVE_STEEPNESS * err);
+}
+
+export function MorphoIrmCard({
+  borrowRate,
+  utilizationRate,
+  lltv,
+  supplyApy,
+}: {
+  borrowRate: number;
+  utilizationRate: number;
+  lltv: number;
+  supplyApy?: number;
+}) {
+  const rateAtTarget = useMemo(
+    () => inferMorphoRateAtTarget(borrowRate, utilizationRate),
+    [borrowRate, utilizationRate],
+  );
+
+  // Derive fee factor to draw supply curve: supplyApy = borrowRate * utilization * (1 - fee)
+  const feeFactor = useMemo(() => {
+    if (supplyApy == null || borrowRate <= 0 || utilizationRate <= 0) return null;
+    return supplyApy / (borrowRate * utilizationRate);
+  }, [supplyApy, borrowRate, utilizationRate]);
+
+  const { borrowCurvePath, supplyCurvePath, maxRate } = useMemo(() => {
+    const samples = Array.from({ length: MORPHO_IRM_SAMPLES + 1 }, (_, i) => i / MORPHO_IRM_SAMPLES);
+    const chartWidth = SVG_WIDTH - PADDING.left - PADDING.right;
+    const chartHeight = SVG_HEIGHT - PADDING.top - PADDING.bottom;
+
+    const maxBorrow = morphoBorrowRate(rateAtTarget, 1);
+    const maxSupply = feeFactor != null ? maxBorrow * feeFactor : 0;
+    const max = Math.max(maxBorrow, maxSupply, 0.02) * 1.12;
+
+    const toPath = (rateFn: (u: number) => number) =>
+      samples
+        .map((u, i) => {
+          const x = PADDING.left + u * chartWidth;
+          const y = PADDING.top + chartHeight - (rateFn(u) / max) * chartHeight;
+          return `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+        })
+        .join(' ');
+
+    return {
+      borrowCurvePath: toPath((u) => morphoBorrowRate(rateAtTarget, u)),
+      supplyCurvePath:
+        feeFactor != null
+          ? toPath((u) => morphoBorrowRate(rateAtTarget, u) * u * feeFactor)
+          : null,
+      maxRate: max,
+    };
+  }, [rateAtTarget, feeFactor]);
+
+  const currentX = xToSvg(utilizationRate);
+  const targetX = xToSvg(MORPHO_TARGET_UTIL);
+  const currentBorrowY = yToSvg(borrowRate, maxRate);
+  const targetBorrowY = yToSvg(rateAtTarget, maxRate);
+  const yTicks = [0, maxRate / 2, maxRate];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Interest Rate Model</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div className="grid gap-1 sm:grid-cols-4">
+          <Stat label="Target Utilization" value={fmtPct(MORPHO_TARGET_UTIL)} />
+          <Stat label="Current Utilization" value={fmtPct(utilizationRate)} />
+          <Stat label="Rate at Target" value={fmtPct(rateAtTarget)} />
+          <Stat label="Borrow APR" value={fmtPct(borrowRate)} />
+        </div>
+
+        <svg
+          viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+          className="w-full overflow-visible"
+          role="img"
+          aria-label="Morpho Adaptive IRM utilization curve"
+        >
+          {yTicks.map((tick) => {
+            const y = yToSvg(tick, maxRate);
+            return (
+              <g key={tick}>
+                <line
+                  x1={PADDING.left}
+                  x2={SVG_WIDTH - PADDING.right}
+                  y1={y}
+                  y2={y}
+                  stroke="rgba(139, 158, 179, 0.22)"
+                  strokeDasharray="5 5"
+                />
+                <text
+                  x={PADDING.left - 12}
+                  y={y + 4}
+                  fill="rgba(139, 158, 179, 0.85)"
+                  fontSize="12"
+                  textAnchor="end"
+                >
+                  {fmtPct(tick, 0)}
+                </text>
+              </g>
+            );
+          })}
+          {[0, 0.25, 0.5, 0.75, 1].map((tick) => (
+            <text
+              key={tick}
+              x={xToSvg(tick)}
+              y={SVG_HEIGHT - 10}
+              fill="rgba(139, 158, 179, 0.85)"
+              fontSize="12"
+              textAnchor={tick === 0 ? 'start' : tick === 1 ? 'end' : 'middle'}
+            >
+              {fmtPct(tick, 0)}
+            </text>
+          ))}
+
+          {/* Supply curve (lower, lighter) */}
+          {supplyCurvePath && (
+            <path
+              d={supplyCurvePath}
+              fill="none"
+              stroke="rgba(226, 236, 244, 0.45)"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+          )}
+
+          {/* Borrow curve */}
+          <path d={borrowCurvePath} fill="none" stroke="#e255bc" strokeWidth="3" strokeLinecap="round" />
+
+          {/* Target utilization dashed line */}
+          <line
+            x1={targetX}
+            x2={targetX}
+            y1={PADDING.top}
+            y2={SVG_HEIGHT - PADDING.bottom}
+            stroke="rgba(40, 153, 255, 0.6)"
+            strokeDasharray="4 4"
+          />
+          {/* Current utilization dashed line */}
+          <line
+            x1={currentX}
+            x2={currentX}
+            y1={PADDING.top}
+            y2={SVG_HEIGHT - PADDING.bottom}
+            stroke="rgba(40, 153, 255, 0.8)"
+            strokeDasharray="4 4"
+          />
+
+          {/* Current borrow rate dot */}
+          <circle cx={currentX} cy={currentBorrowY} r="5" fill="#e255bc" stroke="#0a1220" strokeWidth="2" />
+
+          <text
+            x={Math.min(currentX + 8, SVG_WIDTH - PADDING.right - 8)}
+            y={Math.max(currentBorrowY - 12, PADDING.top + 12)}
+            fill="rgba(226, 236, 244, 0.95)"
+            fontSize="12"
+          >
+            Current {fmtPct(utilizationRate)}
+          </text>
+          <text
+            x={Math.min(targetX + 8, SVG_WIDTH - PADDING.right - 8)}
+            y={Math.max(targetBorrowY - 12, PADDING.top + 28)}
+            fill="rgba(139, 158, 179, 0.95)"
+            fontSize="12"
+          >
+            Target {fmtPct(MORPHO_TARGET_UTIL)}
+          </text>
+        </svg>
+
+        <p className="text-xs text-muted-foreground">
+          Morpho Adaptive IRM · LLTV {fmtPct(lltv)} · Rate at target adjusts over time based on
+          whether utilization stays above or below 90%.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function BorrowRateHistoryCard({
   samples,
   reserve,

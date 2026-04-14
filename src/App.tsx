@@ -197,8 +197,18 @@ export default function App() {
     setReserveTelemetryError('');
 
     if (selectedLoan.marketName.startsWith('morpho_')) {
-      setSelectedReserveTelemetry(null);
-      setReserveTelemetryError('Reserve telemetry is not available for Morpho markets.');
+      // Morpho data comes from the API response — append a sample using the available values.
+      const morphoRate = primaryBorrow.borrowRate;
+      const morphoUtilization = selectedLoan.utilizationRate ?? 0;
+      setBorrowRateHistory((currentSamples) => {
+        const nextSamples = appendBorrowRateSample(currentSamples, {
+          timestamp: result?.lastUpdated ?? new Date().toISOString(),
+          variableBorrowRate: morphoRate,
+          utilizationRate: morphoUtilization,
+        });
+        writeBorrowRateHistory(storageKey, nextSamples);
+        return nextSamples;
+      });
       return;
     }
 

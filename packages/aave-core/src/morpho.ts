@@ -314,6 +314,8 @@ function buildMorphoMarketLoans(positions: RawMorphoMarketPosition[]): LoanPosit
         totalSuppliedUsd,
         totalBorrowedUsd,
         morphoMarketParams,
+        utilizationRate: pos.market.state.utilization,
+        marketSupplyApy: pos.market.state.supplyApy,
       },
     ];
   });

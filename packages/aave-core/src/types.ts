@@ -81,6 +81,10 @@ export type LoanPosition = {
   totalSuppliedUsd: number;
   totalBorrowedUsd: number;
   morphoMarketParams?: MorphoMarketParams;
+  /** Current market utilization rate (0–1). Populated for Morpho markets; undefined for Aave. */
+  utilizationRate?: number;
+  /** Current market supply APY. Populated for Morpho markets; undefined for Aave. */
+  marketSupplyApy?: number;
 };
 
 export type RawUserReserveWithMarket = RawUserReserve & { __marketName: string };

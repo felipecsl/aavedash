@@ -2,6 +2,7 @@ import { AlertTriangle, Info, ShieldCheck } from 'lucide-react';
 import { clamp, healthLabel, type Computed, type LoanPosition } from '@aave-monitor/core';
 import {
   BorrowRateHistoryCard,
+  MorphoIrmCard,
   type BorrowRateSample,
   UtilizationCurveCard,
 } from '../ReserveCharts';
@@ -48,6 +49,16 @@ export function PositionDetailsSection({
 
         {reserveTelemetry ? (
           <UtilizationCurveCard reserve={reserveTelemetry} />
+        ) : selectedLoan?.marketName.startsWith('morpho_') ? (
+          <MorphoIrmCard
+            borrowRate={
+              selectedLoan.borrowed.reduce((max, b) => (b.usdValue > max.usdValue ? b : max))
+                .borrowRate
+            }
+            utilizationRate={selectedLoan.utilizationRate ?? 0}
+            lltv={selectedLoan.supplied[0]?.liqThreshold ?? 0}
+            supplyApy={selectedLoan.marketSupplyApy}
+          />
         ) : reserveTelemetryError ? (
           <Card>
             <CardHeader>
