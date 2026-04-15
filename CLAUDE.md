@@ -57,6 +57,7 @@ Backend server notes:
 - Legacy configs that omit one or more zones are hydrated back to the full default six-zone set by name, so runtime, `/api/config`, and the dashboard stay aligned.
 - Monitor runtime is driven by enabled wallets (not Telegram enablement), so watchdog polling can run without Telegram configured.
 - Morpho positions are fetched from `https://api.morpho.org/graphql` in `packages/aave-core/src/morpho.ts`.
+- Morpho market borrow/supply APYs are normalized to Morpho's default interface view by preferring `state.avgBorrowApy` / `state.avgSupplyApy`; when those fields are unavailable, the app falls back to averaging the last 24 hours of `historicalState`, then finally to the current spot `state.borrowApy` / `state.supplyApy`.
 - `fetchFromMorphoApi()` still returns only Morpho market loans for server/watchdog compatibility; `fetchMorphoPositions()` returns both `marketLoans` and `vaultPositions` for the dashboard.
 - Morpho positions use API-provided USD prices (no CoinGecko dependency).
 - Aave pricing uses the `COINGECKO_IDS_BY_SYMBOL` alias map in `packages/aave-core/src/constants.ts`; add wrapped/alias symbols there when Aave reserve symbols differ from CoinGecko slugs (for example `cbBTC` -> `coinbase-wrapped-btc`).

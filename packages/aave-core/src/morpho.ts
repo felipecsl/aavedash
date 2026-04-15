@@ -20,6 +20,18 @@ type MorphoMarketState = {
   utilization: number;
   borrowApy: number;
   supplyApy: number;
+  avgBorrowApy?: number | null;
+  avgSupplyApy?: number | null;
+};
+
+type MorphoApyHistoryPoint = {
+  x: number;
+  y: number;
+};
+
+type MorphoHistoricalState = {
+  borrowApy?: MorphoApyHistoryPoint[] | null;
+  supplyApy?: MorphoApyHistoryPoint[] | null;
 };
 
 type MorphoMarketPositionState = {
@@ -92,6 +104,16 @@ type MorphoUserResponse = {
   errors?: Array<{ message: string }>;
 };
 
+type MorphoHistoricalRatesResponse = {
+  data?: Record<
+    string,
+    {
+      historicalState?: MorphoHistoricalState | null;
+    } | null
+  >;
+  errors?: Array<{ message: string }>;
+};
+
 const MORPHO_POSITIONS_QUERY = `
   query UserPositions($address: String!, $chainId: Int!) {
     userByAddress(chainId: $chainId, address: $address) {
@@ -124,6 +146,8 @@ const MORPHO_POSITIONS_QUERY = `
             utilization
             borrowApy
             supplyApy
+            avgBorrowApy
+            avgSupplyApy
           }
         }
         state {
@@ -182,6 +206,46 @@ const MORPHO_POSITIONS_QUERY = `
   }
 `;
 
+const MORPHO_RATE_AVERAGE_WINDOW_SECONDS = 24 * 60 * 60;
+
+function buildMorphoHistoricalRatesQuery(marketIds: string[]): string {
+  const markets = marketIds
+    .map(
+      (marketId, index) => `
+      market_${index}: marketByUniqueKey(chainId: $chainId, uniqueKey: "${marketId}") {
+        historicalState {
+          borrowApy(
+            options: {
+              startTimestamp: $startTimestamp
+              endTimestamp: $endTimestamp
+              interval: HOUR
+            }
+          ) {
+            x
+            y
+          }
+          supplyApy(
+            options: {
+              startTimestamp: $startTimestamp
+              endTimestamp: $endTimestamp
+              interval: HOUR
+            }
+          ) {
+            x
+            y
+          }
+        }
+      }`,
+    )
+    .join('\n');
+
+  return `
+    query MarketHistoricalRates($chainId: Int!, $startTimestamp: Int!, $endTimestamp: Int!) {
+      ${markets}
+    }
+  `;
+}
+
 function fromWad(raw: string): number {
   return Number(BigInt(raw)) / 1e18;
 }
@@ -189,6 +253,15 @@ function fromWad(raw: string): number {
 function parseAmount(raw: string, decimals: number): number {
   const value = Number(BigInt(raw)) / 10 ** decimals;
   return Number.isFinite(value) ? value : 0;
+}
+
+function averageApy(points: MorphoApyHistoryPoint[] | null | undefined): number | null {
+  if (!points?.length) return null;
+
+  const values = points.map((point) => point.y).filter((value) => Number.isFinite(value));
+  if (values.length === 0) return null;
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function assetPriceUsd(asset: MorphoAsset): number | null {
@@ -391,6 +464,51 @@ function dedupeMorphoVaultPositions(vaults: MorphoVaultPosition[]): MorphoVaultP
   return Array.from(byAddress.values());
 }
 
+async function fetchAverageMarketApys(
+  marketIds: string[],
+  chainId: number,
+): Promise<Map<string, { borrowApy: number; supplyApy: number }>> {
+  if (marketIds.length === 0) return new Map();
+
+  const now = Math.floor(Date.now() / 1000);
+  const response = await fetch(MORPHO_API_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      query: buildMorphoHistoricalRatesQuery(marketIds),
+      variables: {
+        chainId,
+        startTimestamp: now - MORPHO_RATE_AVERAGE_WINDOW_SECONDS,
+        endTimestamp: now,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Morpho API returned ${response.status}`);
+  }
+
+  const payload = (await response.json()) as MorphoHistoricalRatesResponse;
+  if (payload.errors?.length) {
+    throw new Error(`Morpho API error: ${payload.errors[0]?.message ?? 'unknown'}`);
+  }
+
+  const averaged = new Map<string, { borrowApy: number; supplyApy: number }>();
+  for (const [index, marketId] of marketIds.entries()) {
+    const market = payload.data?.[`market_${index}`];
+    const borrowApy = averageApy(market?.historicalState?.borrowApy);
+    const supplyApy = averageApy(market?.historicalState?.supplyApy);
+    if (borrowApy == null && supplyApy == null) continue;
+
+    averaged.set(marketId, {
+      borrowApy: borrowApy ?? 0,
+      supplyApy: supplyApy ?? 0,
+    });
+  }
+
+  return averaged;
+}
+
 export async function fetchMorphoPositions(
   wallet: string,
   chainId: number = 1,
@@ -418,9 +536,63 @@ export async function fetchMorphoPositions(
   const marketPositions = user?.marketPositions ?? [];
   const vaultV2Positions = user?.vaultV2Positions ?? [];
   const vaultPositions = user?.vaultPositions ?? [];
+  const marketIds = Array.from(
+    new Set(
+      marketPositions
+        .filter(
+          (pos) => pos.market.state.avgBorrowApy == null && pos.market.state.avgSupplyApy == null,
+        )
+        .map((pos) => pos.market.marketId ?? pos.market.uniqueKey)
+        .filter((marketId): marketId is string => Boolean(marketId)),
+    ),
+  );
+
+  let averageMarketApys = new Map<string, { borrowApy: number; supplyApy: number }>();
+  try {
+    averageMarketApys = await fetchAverageMarketApys(marketIds, chainId);
+  } catch {
+    // Fall back to spot rates when historical APY data is unavailable.
+  }
+
+  const marketPositionsWithAverageRates = marketPositions.map((pos) => {
+    const marketId = pos.market.marketId ?? pos.market.uniqueKey;
+    const avgBorrowApy = pos.market.state.avgBorrowApy;
+    const avgSupplyApy = pos.market.state.avgSupplyApy;
+
+    if (avgBorrowApy != null || avgSupplyApy != null) {
+      return {
+        ...pos,
+        market: {
+          ...pos.market,
+          state: {
+            ...pos.market.state,
+            borrowApy: avgBorrowApy ?? pos.market.state.borrowApy,
+            supplyApy: avgSupplyApy ?? pos.market.state.supplyApy,
+          },
+        },
+      };
+    }
+
+    if (!marketId) return pos;
+
+    const averaged = averageMarketApys.get(marketId);
+    if (!averaged) return pos;
+
+    return {
+      ...pos,
+      market: {
+        ...pos.market,
+        state: {
+          ...pos.market.state,
+          borrowApy: averaged.borrowApy,
+          supplyApy: averaged.supplyApy,
+        },
+      },
+    };
+  });
 
   return {
-    marketLoans: buildMorphoMarketLoans(marketPositions),
+    marketLoans: buildMorphoMarketLoans(marketPositionsWithAverageRates),
     vaultPositions: dedupeMorphoVaultPositions([
       ...buildMorphoVaultV2Positions(vaultV2Positions),
       ...buildMorphoVaultPositions(vaultPositions),

@@ -28,7 +28,9 @@ const SVG_HEIGHT = 280;
 const PADDING = { top: 16, right: 18, bottom: 36, left: 48 };
 
 function fmtPct(value: number, digits = 2): string {
-  return `${(value * 100).toFixed(digits)}%`;
+  const scale = 10 ** digits;
+  const truncated = Math.trunc(value * 100 * scale) / scale;
+  return `${truncated.toFixed(digits)}%`;
 }
 
 function createLinePath(

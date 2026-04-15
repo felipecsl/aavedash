@@ -213,7 +213,7 @@ The watchdog monitors loan health and can execute an atomic on-chain rescue when
 1. User enters an Ethereum wallet address, provides it via query string (`wallet`, `address`, or `walletAddress`), or reloads with the last saved wallet from browser storage.
 2. App queries Aave subgraph data for supported markets.
 3. Aave reserves are grouped into loan positions per market; Morpho market loans and Morpho vault deposits are fetched from Morpho's GraphQL API.
-4. Token prices are fetched from CoinGecko for Aave assets, while Morpho positions use API-provided pricing or USD back-calculation for borrowed assets and vault deposits.
+4. Token prices are fetched from CoinGecko for Aave assets, while Morpho positions use API-provided pricing or USD back-calculation for borrowed assets and vault deposits. Morpho market borrow/supply rates are aligned to Morpho's interface default 1-day average APY by preferring Morpho's `avgBorrowApy` / `avgSupplyApy` fields instead of the instantaneous spot rate.
 5. Portfolio-level aggregate metrics are computed across all active positions, with loan-risk metrics kept separate from supply-only vault assets.
 6. Detailed risk metrics are computed and rendered for the selected loan, while Morpho vaults render in a separate table.
 7. When the API server is available, the dashboard also reads on-chain reserve telemetry for the selected borrowed asset and stores periodic borrow APR samples in browser `localStorage` to build the history chart over time.

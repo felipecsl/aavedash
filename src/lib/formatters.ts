@@ -13,7 +13,9 @@ export function fmtUSD(value: number, digits = 0): string {
 }
 
 export function fmtPct(value: number, digits = 2): string {
-  return `${(value * 100).toFixed(digits)}%`;
+  const scale = 10 ** digits;
+  const truncated = Math.trunc(value * 100 * scale) / scale;
+  return `${truncated.toFixed(digits)}%`;
 }
 
 export function fmtAmount(value: number, digits = 4): string {

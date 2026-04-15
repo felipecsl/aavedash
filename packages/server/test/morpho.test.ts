@@ -57,6 +57,8 @@ function samplePosition(overrides?: Partial<RawMorphoMarketPosition>): RawMorpho
         utilization: 0.75,
         borrowApy: 0.045,
         supplyApy: 0.032,
+        avgBorrowApy: 0.0505,
+        avgSupplyApy: 0.0305,
       },
     },
     borrowAssets: '500000000', // 500 USDC (6 decimals)
@@ -126,11 +128,14 @@ describe('fetchFromMorphoApi', () => {
 
   it('parses a position into a LoanPosition', async () => {
     const mockResponse = makeMorphoApiResponse([samplePosition()]);
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify(mockResponse), {
+    let callCount = 0;
+    globalThis.fetch = async () => {
+      callCount += 1;
+      return new Response(JSON.stringify(mockResponse), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
+    };
 
     const loans = await fetchFromMorphoApi(WALLET);
 
@@ -160,7 +165,7 @@ describe('fetchFromMorphoApi', () => {
     assert.equal(borrow.amount, 500);
     assert.equal(borrow.usdPrice, 1.0);
     assert.equal(borrow.usdValue, 500);
-    assert.equal(borrow.borrowRate, 0.045);
+    assert.equal(borrow.borrowRate, 0.0505);
 
     // MorphoMarketParams
     assert.ok(loan.morphoMarketParams);
@@ -172,6 +177,8 @@ describe('fetchFromMorphoApi', () => {
     assert.equal(loan.morphoMarketParams.oracle, '0x0000000000000000000000000000000000000001');
     assert.equal(loan.morphoMarketParams.irm, '0x0000000000000000000000000000000000000002');
     assert.equal(loan.morphoMarketParams.lltv, '860000000000000000');
+    assert.equal(loan.marketSupplyApy, 0.0305);
+    assert.equal(callCount, 1);
   });
 
   it('filters out dust positions', async () => {
@@ -270,9 +277,9 @@ describe('fetchFromMorphoApi', () => {
       },
     };
     const mockResponse = makeMorphoApiResponse([replacementPosition]);
-    let query = '';
+    const queries: string[] = [];
     globalThis.fetch = async (_url, init) => {
-      query = String(JSON.parse(String(init?.body)).query);
+      queries.push(String(JSON.parse(String(init?.body)).query));
       return new Response(JSON.stringify(mockResponse), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -286,9 +293,10 @@ describe('fetchFromMorphoApi', () => {
     assert.equal(loans[0].morphoMarketParams?.oracle, '0x0000000000000000000000000000000000000001');
     assert.equal(loans[0].borrowed[0].usdValue, 500);
     assert.equal(loans[0].supplied[0].usdValue, 3000);
-    assert.doesNotMatch(query, /\buniqueKey\b/);
-    assert.doesNotMatch(query, /\boracleAddress\b/);
-    assert.doesNotMatch(query, /\bpriceUsd\b/);
+    assert.ok(queries.length >= 1);
+    assert.doesNotMatch(queries[0]!, /\buniqueKey\b/);
+    assert.doesNotMatch(queries[0]!, /\boracleAddress\b/);
+    assert.doesNotMatch(queries[0]!, /\bpriceUsd\b/);
   });
 
   it('throws on API error', async () => {
@@ -297,6 +305,39 @@ describe('fetchFromMorphoApi', () => {
     await assert.rejects(() => fetchFromMorphoApi(WALLET), {
       message: 'Morpho API returned 500',
     });
+  });
+
+  it('falls back to spot APYs when historical rate lookup fails', async () => {
+    const mockResponse = makeMorphoApiResponse([
+      samplePosition({
+        market: {
+          ...samplePosition().market,
+          state: {
+            ...samplePosition().market.state,
+            avgBorrowApy: null,
+            avgSupplyApy: null,
+          },
+        },
+      }),
+    ]);
+    let callCount = 0;
+    globalThis.fetch = async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return new Response(JSON.stringify(mockResponse), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+
+      return new Response('', { status: 500 });
+    };
+
+    const loans = await fetchFromMorphoApi(WALLET);
+
+    assert.equal(loans.length, 1);
+    assert.equal(loans[0]?.borrowed[0]?.borrowRate, 0.045);
+    assert.equal(loans[0]?.marketSupplyApy, 0.032);
   });
 
   it('throws on GraphQL error', async () => {
