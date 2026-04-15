@@ -22,6 +22,7 @@ test('formatStatusMessage shows human-readable market names instead of loan ids'
         wallet: '0x1111111111111111111111111111111111117405',
         healthFactor: 1.97,
         adjustedHF: 1.97,
+        borrowRate: 0.0512,
         debtUsd: 1000,
         collateralUsd: 2500,
         maxBorrowByLtvUsd: 1500,
@@ -58,6 +59,7 @@ test('formatStatusMessage reports repay coverage from wallet balances matching b
         wallet: '0x1111111111111111111111111111111111117405',
         healthFactor: 1.97,
         adjustedHF: 1.97,
+        borrowRate: 0.05,
         debtUsd: 1000,
         collateralUsd: 2500,
         maxBorrowByLtvUsd: 1500,
@@ -90,6 +92,7 @@ test('formatStatusMessage shows rescue-adjusted HF when wallet can repay part of
         wallet: '0x1111111111111111111111111111111111117405',
         healthFactor: 1.6,
         adjustedHF: 2.1333333333333333,
+        borrowRate: 0.05,
         debtUsd: 1000,
         collateralUsd: 2000,
         maxBorrowByLtvUsd: 1500,
@@ -109,5 +112,8 @@ test('formatStatusMessage shows rescue-adjusted HF when wallet can repay part of
   };
 
   const message = formatStatusMessage(status, [...zones]);
-  assert.match(message, /HF: <b>1\.60<\/b> · Adj: <b>2\.13<\/b> · Zone: WATCH/);
+  assert.match(
+    message,
+    /HF: <b>1\.60<\/b> · Adjusted HF: <b>2\.13<\/b> · Rate: <b>5\.00%<\/b> · Zone: WATCH/,
+  );
 });

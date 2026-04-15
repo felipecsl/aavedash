@@ -199,6 +199,7 @@ test('groups multiple loan alerts for the same wallet into one telegram message'
     assert.match(sentMessages[0]!.text, /Wallet: <code>Main Wallet \(0x1111\.\.\.1111\)<\/code>/);
     assert.match(sentMessages[0]!.text, /Market: proto_mainnet_v3/);
     assert.match(sentMessages[0]!.text, /Market: morpho_WETH_USDC/);
+    assert.match(sentMessages[0]!.text, /Borrow rate: <b>0\.00%<\/b>/);
     assert.equal(sentMessages[0]!.text.match(/Wallet:/g)?.length ?? 0, 1);
   } finally {
     globalThis.fetch = originalFetch;
@@ -306,6 +307,7 @@ test('wallet reminder digest includes all non-safe loans when any loan is due', 
     assert.match(sentMessages[0]!.text, /Reminder 2/);
     assert.match(sentMessages[0]!.text, /Market: proto_mainnet_v3/);
     assert.match(sentMessages[0]!.text, /Market: morpho_WETH_USDC/);
+    assert.match(sentMessages[0]!.text, /Borrow rate: <b>0\.00%<\/b>/);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -386,6 +388,7 @@ test('monitor state uses wallet debt-token balances to project rescue-adjusted H
     assert.ok(state);
     assert.equal(state.healthFactor, 1.6);
     assert.equal(state.adjustedHF, 1600 / 750);
+    assert.equal(state.borrowRate, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

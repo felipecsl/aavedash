@@ -27,6 +27,7 @@ export type LoanAlertState = {
   wallet: string;
   healthFactor: number;
   adjustedHF: number;
+  borrowRate: number;
   debtUsd: number;
   collateralUsd: number;
   maxBorrowByLtvUsd: number;
@@ -264,6 +265,7 @@ export class Monitor {
           wallet: address,
           healthFactor: metrics.healthFactor,
           adjustedHF,
+          borrowRate: metrics.rBorrow,
           debtUsd: metrics.debt,
           collateralUsd: metrics.collateralUSD,
           maxBorrowByLtvUsd: metrics.maxBorrowByLTV,
@@ -282,6 +284,7 @@ export class Monitor {
       existing.marketName = loan.marketName;
       existing.healthFactor = metrics.healthFactor;
       existing.adjustedHF = adjustedHF;
+      existing.borrowRate = metrics.rBorrow;
       existing.debtUsd = metrics.debt;
       existing.collateralUsd = metrics.collateralUSD;
       existing.maxBorrowByLtvUsd = metrics.maxBorrowByLTV;
@@ -411,6 +414,7 @@ export class Monitor {
     metrics: {
       healthFactor: number;
       adjustedHF: number;
+      rBorrow: number;
       assetLiquidations: AssetLiquidation[];
     },
     zone: Zone,
@@ -425,7 +429,7 @@ export class Monitor {
       `Market: ${loan.marketName}`,
       `Borrowed: $${loan.totalBorrowedUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${loan.borrowed.map((b) => b.symbol).join('+')} | Collateral: $${loan.totalSuppliedUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
       '',
-      `Health Factor: <b>${hf}</b> · Adjusted: <b>${adjHf}</b>`,
+      `HF: <b>${hf}</b> · Adjusted HF: <b>${adjHf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
       `Zone: ${zone.emoji} ${zone.label} (was ${previousZone.emoji} ${previousZone.label})`,
       `Action: ${zone.action}`,
       '',
@@ -442,7 +446,7 @@ export class Monitor {
 
   private formatRecovery(
     loan: { marketName: string; borrowed: { symbol: string }[] },
-    metrics: { healthFactor: number; adjustedHF: number },
+    metrics: { healthFactor: number; adjustedHF: number; rBorrow: number },
     zone: Zone,
     previousZone: Zone,
   ): string {
@@ -453,14 +457,14 @@ export class Monitor {
       `${zone.emoji} <b>IMPROVING</b> — Zone Recovery`,
       '',
       `Market: ${loan.marketName} · ${loan.borrowed.map((b) => b.symbol).join('+')}`,
-      `Health Factor: <b>${hf}</b> · Adjusted: <b>${adjHf}</b>`,
+      `HF: <b>${hf}</b> · Adjusted HF: <b>${adjHf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
       `Zone: ${zone.emoji} ${zone.label} (was ${previousZone.emoji} ${previousZone.label})`,
     ].join('\n');
   }
 
   private formatAllClear(
     loan: { marketName: string; borrowed: { symbol: string }[] },
-    metrics: { healthFactor: number; adjustedHF: number },
+    metrics: { healthFactor: number; adjustedHF: number; rBorrow: number },
   ): string {
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '∞';
     const adjHf = Number.isFinite(metrics.adjustedHF) ? metrics.adjustedHF.toFixed(2) : '∞';
@@ -469,7 +473,7 @@ export class Monitor {
       `\u{1F7E2} <b>ALL CLEAR</b> — Back to Safe`,
       '',
       `Market: ${loan.marketName} · ${loan.borrowed.map((b) => b.symbol).join('+')}`,
-      `Health Factor: <b>${hf}</b> · Adjusted: <b>${adjHf}</b>`,
+      `HF: <b>${hf}</b> · Adjusted HF: <b>${adjHf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
       '',
       `All positions are healthy. Monitoring continues.`,
     ].join('\n');
@@ -477,7 +481,7 @@ export class Monitor {
 
   private formatReminder(
     loan: { marketName: string; borrowed: { symbol: string }[] },
-    metrics: { healthFactor: number; adjustedHF: number },
+    metrics: { healthFactor: number; adjustedHF: number; rBorrow: number },
     zone: Zone,
     stuckDurationMs: number,
   ): string {
@@ -489,7 +493,7 @@ export class Monitor {
       `${zone.emoji} <b>REMINDER</b> — Still in ${zone.label} zone`,
       '',
       `Market: ${loan.marketName} · ${loan.borrowed.map((b) => b.symbol).join('+')}`,
-      `Health Factor: <b>${hf}</b> · Adjusted: <b>${adjHf}</b>`,
+      `HF: <b>${hf}</b> · Adjusted HF: <b>${adjHf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
       `Duration: ${timeAgo} ago`,
       `Action: ${zone.action}`,
     ].join('\n');
@@ -555,5 +559,9 @@ export class Monitor {
 
   private shortAddr(address: string): string {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }
+
+  private formatBorrowRate(rate: number): string {
+    return Number.isFinite(rate) ? `${(rate * 100).toFixed(2)}%` : 'N/A';
   }
 }

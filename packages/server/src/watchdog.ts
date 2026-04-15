@@ -89,7 +89,9 @@ export class Watchdog {
 
     if (!config.enabled) return;
 
-    const healthFactor = computeLoanMetrics(loan).healthFactor;
+    const metrics = computeLoanMetrics(loan);
+    const healthFactor = metrics.healthFactor;
+    const borrowRate = this.formatBorrowRate(metrics.rBorrow);
     if (!Number.isFinite(healthFactor) || healthFactor >= config.triggerHF) {
       return;
     }
@@ -206,6 +208,7 @@ export class Watchdog {
           `🚨 <b>Watchdog: ${debtSymbol} unavailable</b>\n\n` +
             `Loan: ${loan.id} (${loan.marketName})\n` +
             `HF: <b>${healthFactor.toFixed(4)}</b>\n` +
+            `Borrow rate: <b>${borrowRate}</b>\n` +
             `Wallet ${debtSymbol}: ${formatUnits(walletBalanceRaw, debtDecimals)}\n` +
             `Allowance ${debtSymbol}: ${formatUnits(allowanceRaw, debtDecimals)}`,
         );
@@ -241,6 +244,7 @@ export class Watchdog {
           `🚨 <b>Watchdog: Rescue not feasible</b>\n\n` +
             `Loan: ${loan.id} (${loan.marketName})\n` +
             `Current HF: <b>${healthFactor.toFixed(4)}</b>\n` +
+            `Borrow rate: <b>${borrowRate}</b>\n` +
             `Max usable ${debtSymbol}: ${formatUnits(availableRaw, debtDecimals)}\n` +
             `Min resulting HF: ${config.minResultingHF}`,
         );
@@ -287,6 +291,7 @@ export class Watchdog {
         `❌ <b>Watchdog: On-chain call failed</b>\n\n` +
           `Loan: ${loan.id} (${loan.marketName})\n` +
           `HF: <b>${healthFactor.toFixed(4)}</b>\n` +
+          `Borrow rate: <b>${borrowRate}</b>\n` +
           `Error: ${message}`,
       );
       return;
@@ -310,6 +315,7 @@ export class Watchdog {
         `🧪 <b>Watchdog DRY RUN</b>\n\n` +
           `Loan: ${loan.id} (${loan.marketName})\n` +
           `Current HF: <b>${healthFactor.toFixed(4)}</b> (trigger: ${config.triggerHF})\n` +
+          `Borrow rate: <b>${borrowRate}</b>\n` +
           `Target HF: ${config.targetHF}\n` +
           `Min resulting HF: ${config.minResultingHF}\n\n` +
           `Would repay: <b>${repayAmount.toFixed(2)} ${debtSymbol}</b>\n` +
@@ -350,6 +356,8 @@ export class Watchdog {
       });
       await this.notify(
         `⛽ <b>Watchdog: Gas too high</b>\n\n` +
+          `Loan: ${loan.id} (${loan.marketName})\n` +
+          `Borrow rate: <b>${borrowRate}</b>\n` +
           `Current: ${gasPriceGwei.toFixed(1)} gwei (max: ${config.maxGasGwei})\n` +
           `Skipping rescue for ${repayAmount.toFixed(2)} ${debtSymbol}`,
       );
@@ -372,6 +380,8 @@ export class Watchdog {
       });
       await this.notify(
         `⛽ <b>Watchdog: Insufficient ETH for gas</b>\n\n` +
+          `Loan: ${loan.id} (${loan.marketName})\n` +
+          `Borrow rate: <b>${borrowRate}</b>\n` +
           `Balance: ${ethBalance.toFixed(6)} ETH\n` +
           `Skipping rescue for ${repayAmount.toFixed(2)} ${debtSymbol}`,
       );
@@ -416,6 +426,7 @@ export class Watchdog {
       await this.notify(
         `✅ <b>Watchdog: Atomic rescue executed</b>\n\n` +
           `Loan: ${loan.id} (${loan.marketName})\n` +
+          `Borrow rate: <b>${borrowRate}</b>\n` +
           `Repay: <b>${repayAmount.toFixed(2)} ${debtSymbol}</b>\n` +
           `Projected HF: <b>${projectedHF.toFixed(4)}</b>\n` +
           `Tx: <code>${txHash}</code>`,
@@ -439,6 +450,7 @@ export class Watchdog {
       await this.notify(
         `❌ <b>Watchdog: Rescue failed</b>\n\n` +
           `Loan: ${loan.id} (${loan.marketName})\n` +
+          `Borrow rate: <b>${borrowRate}</b>\n` +
           `Repay attempted: <b>${repayAmount.toFixed(2)} ${debtSymbol}</b>\n` +
           `Error: ${message}`,
       );
@@ -746,6 +758,10 @@ export class Watchdog {
       },
       'Watchdog log entry',
     );
+  }
+
+  private formatBorrowRate(rate: number): string {
+    return Number.isFinite(rate) ? `${(rate * 100).toFixed(2)}%` : 'N/A';
   }
 }
 

@@ -120,6 +120,7 @@ test('dry-run logs planned atomic rescue and applies cooldown', async () => {
 
   assert.equal(messages.length, 1);
   assert.match(messages[0]!, /Watchdog DRY RUN/);
+  assert.match(messages[0]!, /Borrow rate: <b>5\.00%<\/b>/);
   const log = watchdog.getLog();
   assert.equal(log[0]?.action, 'dry-run');
   assert.equal(log[0]?.repayAmount, 2.5);
@@ -194,6 +195,7 @@ test('live mode allows executor key to differ from monitored wallet', async () =
   assert.equal(log[0]?.action, 'rescue');
   assert.equal(log[0]?.txHash, '0xexecutor');
   assert.equal(messages.length, 1);
+  assert.match(messages[0]!, /Borrow rate: <b>5\.00%<\/b>/);
 });
 
 test('live mode executes rescue and records tx hash', async () => {
@@ -235,6 +237,7 @@ test('live mode executes rescue and records tx hash', async () => {
   assert.equal(log[0]?.txHash, '0xabc123');
   assert.equal(messages.length, 1);
   assert.match(messages[0]!, /Atomic rescue executed/);
+  assert.match(messages[0]!, /Borrow rate: <b>5\.00%<\/b>/);
 });
 
 test('waitForReceiptOrReplacement treats successful equivalent replacement as success', async () => {
@@ -363,4 +366,5 @@ test('failed rescue tx logs error, sets cooldown, and notifies', async () => {
   // Notification should be sent
   assert.equal(messages.length, 1);
   assert.match(messages[0]!, /Rescue failed/);
+  assert.match(messages[0]!, /Borrow rate: <b>5\.00%<\/b>/);
 });

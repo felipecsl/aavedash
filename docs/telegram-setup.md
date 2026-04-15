@@ -89,7 +89,7 @@ curl -X POST http://localhost:3001/api/status/refresh
 
 Telegram bot commands:
 
-- `/status` prints current loans plus a portfolio summary (average health factor, Net APY, total collateral, total debt, portfolio borrow power used, repay coverage in USD and %). Morpho Blue market collateral is risk collateral only, so it does not add market supply APY to carry.
+- `/status` prints current loans plus a portfolio summary (average health factor, Net APY, total collateral, total debt, portfolio borrow power used, repay coverage in USD and %). Each loan row also includes the current borrow rate percentage. Morpho Blue market collateral is risk collateral only, so it does not add market supply APY to carry.
 - `/status` prints each loan with its human-readable market name; Morpho entries show labels like `morpho_cbBTC_USDC` instead of raw market IDs.
 - `/refresh` refreshes monitor state first, then prints the same enriched status output.
 - `/watchdog` prints watchdog mode, thresholds, and recent watchdog actions.
@@ -116,6 +116,7 @@ For the open-ended top zone (`safe`), `maxHF` may be sent as `null` in JSON and 
 - Notifications fire on **zone transitions only** — no repeats for the same zone.
 - **Worsening zones** notify immediately (e.g. Comfort to Watch, Watch to Alert).
 - **Critical zone** bypasses debounce — instant notification.
+- Loan-specific alerts, reminders, recoveries, all-clear messages, and watchdog notices include the current borrow rate percentage for that loan.
 - Other zone transitions require **2 consecutive checks** (~10 min) before alerting.
 - **Recovery** sends a single message, then a 30-minute cooldown.
 - If stuck in a non-safe zone for 30+ minutes, a **reminder** is sent with a human-readable elapsed duration (e.g. `2h 40m ago`).
