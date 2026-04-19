@@ -182,6 +182,11 @@ export class Monitor {
         this.walletBorrowedAssetUsd.delete(existingAddress);
       }
     }
+    for (const [utilKey, utilState] of Array.from(this.utilizationStates.entries())) {
+      if (!enabledAddresses.has(utilState.wallet.toLowerCase())) {
+        this.utilizationStates.delete(utilKey);
+      }
+    }
 
     if (enabledWallets.length === 0) {
       this.lastPollAt = Date.now();
@@ -478,18 +483,19 @@ export class Monitor {
 
           if (!existingUtil) {
             const isAbove = currentUtilization >= threshold;
+            const sent = isAbove && chatId;
             this.utilizationStates.set(utilKey, {
               wallet: address,
               loanId: loan.id,
               marketName: loan.marketName,
               assetAddress: assetAddr,
               assetSymbol: borrowedAsset.symbol,
-              alerted: isAbove,
-              lastNotifiedAt: isAbove ? now : 0,
+              alerted: sent ? true : false,
+              lastNotifiedAt: sent ? now : 0,
               lastUtilization: currentUtilization,
               threshold,
             });
-            if (isAbove && chatId) {
+            if (sent) {
               pendingNotifications.push({
                 kind: 'utilization-high',
                 message: this.formatUtilizationHigh(
@@ -508,8 +514,9 @@ export class Monitor {
           existingUtil.threshold = threshold;
 
           if (currentUtilization >= threshold && !existingUtil.alerted) {
-            existingUtil.alerted = true;
             if (chatId && now - existingUtil.lastNotifiedAt >= config.utilization.cooldownMs) {
+              existingUtil.alerted = true;
+              existingUtil.lastNotifiedAt = now;
               pendingNotifications.push({
                 kind: 'utilization-high',
                 message: this.formatUtilizationHigh(
@@ -520,11 +527,11 @@ export class Monitor {
                   metrics,
                 ),
               });
-              existingUtil.lastNotifiedAt = now;
             }
           } else if (currentUtilization < threshold && existingUtil.alerted) {
-            existingUtil.alerted = false;
             if (chatId && now - existingUtil.lastNotifiedAt >= config.utilization.cooldownMs) {
+              existingUtil.alerted = false;
+              existingUtil.lastNotifiedAt = now;
               pendingNotifications.push({
                 kind: 'utilization-normalized',
                 message: this.formatUtilizationNormalized(
@@ -535,7 +542,6 @@ export class Monitor {
                   metrics,
                 ),
               });
-              existingUtil.lastNotifiedAt = now;
             }
           }
         }
