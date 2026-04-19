@@ -20,6 +20,7 @@ import type { TelegramClient } from './telegram.js';
 import { Watchdog, type WatchdogLogEntry } from './watchdog.js';
 import { logger } from './logger.js';
 import { computeRescueAdjustedHF } from './rescueMetrics.js';
+import type { RateHistoryDb } from './rateHistoryDb.js';
 
 export type LoanAlertState = {
   loanId: string;
@@ -66,6 +67,7 @@ export class Monitor {
   private lastPollAt: number | null = null;
   private lastError: string | null = null;
   private running = false;
+  private lastSampleAt = new Map<string, number>();
   readonly watchdog: Watchdog;
 
   constructor(
@@ -75,6 +77,7 @@ export class Monitor {
     private readonly coingeckoApiKey: string | undefined,
     private readonly rpcUrl: string,
     privateKey: string | undefined,
+    private readonly rateHistoryDb?: RateHistoryDb,
   ) {
     this.watchdog = new Watchdog(
       telegram,
@@ -162,6 +165,7 @@ export class Monitor {
       for (const wallet of enabledWallets) {
         await this.checkWallet(wallet.address, wallet.label, config, chatId);
       }
+      this.rateHistoryDb?.prune(180 * 24 * 60 * 60 * 1000);
       this.lastPollAt = Date.now();
       this.lastError = null;
     } catch (error) {
@@ -239,6 +243,22 @@ export class Monitor {
       const zone = classifyZone(metrics.healthFactor, this.hydrateZones(config.zones));
       const stateKey = `${address}-${loan.id}`;
       activeStateKeys.add(stateKey);
+
+      // Record rate sample (throttled to 15-minute intervals)
+      if (this.rateHistoryDb) {
+        const lastTs = this.lastSampleAt.get(stateKey) ?? 0;
+        if (now - lastTs >= 15 * 60 * 1000) {
+          this.rateHistoryDb.appendSample(
+            address,
+            loan.id,
+            loan.marketName,
+            now,
+            metrics.rBorrow,
+            metrics.rSupply,
+          );
+          this.lastSampleAt.set(stateKey, now);
+        }
+      }
 
       const collateralInfo = loan.supplied
         .map((c) => `${c.symbol}=$${c.usdPrice > 0 ? c.usdPrice : 'MISSING'}`)
