@@ -305,9 +305,11 @@ export class Monitor {
     const pendingNotifications: WalletNotification[] = [];
     const reminderDigestEntries: ReminderDigestEntry[] = [];
     let shouldSendReminderDigest = false;
+    const metricsCache = new Map<string, ReturnType<typeof computeLoanMetrics>>();
 
     for (const loan of loans) {
       const metrics = computeLoanMetrics(loan);
+      metricsCache.set(loan.id, metrics);
       const adjustedHF = computeRescueAdjustedHF(loan, walletBorrowedAssetBalances);
       const notificationMetrics = { ...metrics, adjustedHF };
       const zone = classifyZone(metrics.healthFactor, this.hydrateZones(config.zones));
@@ -452,7 +454,7 @@ export class Monitor {
     const activeUtilKeys = new Set<string>();
     if (config.utilization.enabled) {
       for (const loan of loans) {
-        const metrics = computeLoanMetrics(loan);
+        const metrics = metricsCache.get(loan.id)!;
         for (const borrowedAsset of loan.borrowed) {
           const assetAddr = borrowedAsset.address.toLowerCase();
           let currentUtilization: number | undefined;
@@ -471,6 +473,8 @@ export class Monitor {
                   ? telemetry.optimalUsageRatio
                   : config.utilization.defaultThreshold;
             } else {
+              const utilKey = `${address}-${loan.id}-${assetAddr}`;
+              activeUtilKeys.add(utilKey);
               continue;
             }
           }
@@ -590,10 +594,14 @@ export class Monitor {
     if (loan.marketName.startsWith('morpho_')) {
       return loan.utilizationRate;
     }
-    const firstBorrowed = loan.borrowed[0];
-    if (!firstBorrowed) return undefined;
-    const telKey = `${loan.marketName}:${firstBorrowed.address.toLowerCase()}`;
-    return telemetryMap.get(telKey)?.utilizationRate;
+    const utilizationRates = loan.borrowed
+      .map((borrowed) => {
+        const telKey = `${loan.marketName}:${borrowed.address.toLowerCase()}`;
+        return telemetryMap.get(telKey)?.utilizationRate;
+      })
+      .filter((rate): rate is number => rate !== undefined);
+    if (utilizationRates.length === 0) return undefined;
+    return Math.max(...utilizationRates);
   }
 
   private hydrateZones(configuredZones: AlertConfig['zones'] | undefined): Zone[] {
