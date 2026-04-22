@@ -103,8 +103,8 @@ Live:
 - `GET /api/watchdog/status`: returns summary + recent action log
 - Status summary fields include `aaveRescueContract` and `morphoRescueContract`
 - Recent action entries include `protocol`, `repayAmount`, and `repayAssetSymbol`
-- `GET /api/config`: includes watchdog section
-- `PUT /api/config`: updates watchdog fields
+- `GET /api/config`: includes watchdog and utilization sections
+- `PUT /api/config`: updates watchdog and utilization alert fields
 - `/watchdog`: shows watchdog status and recent actions
 
 ## Typical Failure Reasons

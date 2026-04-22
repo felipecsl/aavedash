@@ -209,7 +209,7 @@ The watchdog monitors loan health and can execute an atomic on-chain rescue when
 - A single Morpho rescue contract can support multiple Morpho markets for the same monitored wallet/executor pair. Enable each supported market on-chain with `setSupportedMarket(...)`, typically from Etherscan Write Contract signed by the owner wallet.
 - API: `GET /api/watchdog/status` for status and recent action log
 - Telegram: `/watchdog` command for status and recent actions
-- Config: watchdog section in `GET/PUT /api/config`
+- Config: watchdog and utilization sections in `GET/PUT /api/config`
 - Dashboard UI: bell settings panel includes rescue contracts, HF thresholds, rescue-asset cap, deadline, gas cap
 
 ## How It Works

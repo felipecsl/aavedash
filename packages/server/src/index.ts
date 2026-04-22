@@ -17,6 +17,7 @@ import { fetchReserveTelemetry } from './reserveTelemetry.js';
 import { parseConfigBody } from './configSchema.js';
 import { formatStatusMessage } from './statusMessage.js';
 import { RateHistoryDb } from './rateHistoryDb.js';
+import { serializeConfig } from './configResponse.js';
 
 const tokenBalanceRequestSchema = z.object({
   tokens: z.array(
@@ -118,14 +119,7 @@ app.use((req, res, next) => {
 });
 
 app.get('/api/config', (_req, res) => {
-  const config = storage.get();
-  res.json({
-    wallets: config.wallets,
-    telegram: { chatId: config.telegram.chatId, enabled: config.telegram.enabled },
-    polling: config.polling,
-    zones: config.zones,
-    watchdog: config.watchdog,
-  });
+  res.json(serializeConfig(storage.get()));
 });
 
 app.put('/api/config', (req, res) => {
@@ -141,13 +135,7 @@ app.put('/api/config', (req, res) => {
   }
   const updated = storage.update(parsed.data);
   syncRuntimeServices({ restartMonitor: true });
-  res.json({
-    wallets: updated.wallets,
-    telegram: { chatId: updated.telegram.chatId, enabled: updated.telegram.enabled },
-    polling: updated.polling,
-    zones: updated.zones,
-    watchdog: updated.watchdog,
-  });
+  res.json(serializeConfig(updated));
 });
 
 app.post('/api/telegram/test', async (_req, res) => {
