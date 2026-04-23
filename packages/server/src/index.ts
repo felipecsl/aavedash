@@ -16,7 +16,7 @@ import { logger } from './logger.js';
 import { fetchReserveTelemetry } from './reserveTelemetry.js';
 import { parseConfigBody } from './configSchema.js';
 import { formatStatusMessage } from './statusMessage.js';
-import { RateHistoryDb } from './rateHistoryDb.js';
+import { RateHistoryDb, computeInterestDeltas } from './rateHistoryDb.js';
 import { serializeConfig } from './configResponse.js';
 
 const tokenBalanceRequestSchema = z.object({
@@ -37,6 +37,14 @@ const reserveTelemetryQuerySchema = z.object({
 const rateHistoryQuerySchema = z.object({
   wallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   loanId: z.string().min(1),
+  from: z.coerce.number().int().optional(),
+  to: z.coerce.number().int().optional(),
+});
+
+const interestHistoryQuerySchema = z.object({
+  wallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  positionId: z.string().min(1),
+  kind: z.enum(['loan', 'vault']),
   from: z.coerce.number().int().optional(),
   to: z.coerce.number().int().optional(),
 });
@@ -253,6 +261,17 @@ app.get('/api/rates/history', (req, res) => {
   const { wallet, loanId, from, to } = parsed.data;
   const samples = rateHistoryDb.querySamples(wallet, loanId, from, to);
   res.json({ samples });
+});
+
+app.get('/api/interest/history', (req, res) => {
+  const parsed = interestHistoryQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid query parameters' });
+    return;
+  }
+  const { wallet, positionId, kind, from, to } = parsed.data;
+  const rows = rateHistoryDb.queryInterestSnapshots(wallet, positionId, kind, from, to);
+  res.json({ snapshots: computeInterestDeltas(rows) });
 });
 
 app.get('/api/health', (_req, res) => {
