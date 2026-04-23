@@ -23,7 +23,7 @@ import { Watchdog, type WatchdogLogEntry } from './watchdog.js';
 import { logger } from './logger.js';
 import { computeRescueAdjustedHF } from './rescueMetrics.js';
 import { fetchReserveTelemetry } from './reserveTelemetry.js';
-import type { RateHistoryDb } from './rateHistoryDb.js';
+import { type RateHistoryDb, shouldTakeInterestSnapshot } from './rateHistoryDb.js';
 
 export type LoanAlertState = {
   loanId: string;
@@ -588,7 +588,7 @@ export class Monitor {
         if (loan.accruedBorrowInterestUsd == null) continue;
         try {
           const last = this.rateHistoryDb.getLastInterestSnapshotTs(address, loan.id, 'loan');
-          if (last == null || now - last >= MIN_SNAPSHOT_INTERVAL_MS) {
+          if (shouldTakeInterestSnapshot(last, now, MIN_SNAPSHOT_INTERVAL_MS)) {
             this.rateHistoryDb.appendInterestSnapshot(
               address,
               loan.id,
@@ -610,7 +610,7 @@ export class Monitor {
             vault.vaultAddress,
             'vault',
           );
-          if (last == null || now - last >= MIN_SNAPSHOT_INTERVAL_MS) {
+          if (shouldTakeInterestSnapshot(last, now, MIN_SNAPSHOT_INTERVAL_MS)) {
             this.rateHistoryDb.appendInterestSnapshot(
               address,
               vault.vaultAddress,

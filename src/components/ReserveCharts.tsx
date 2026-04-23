@@ -7,8 +7,8 @@ import {
 import {
   LineChart,
   Line,
-  BarChart,
   Bar,
+  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -577,9 +577,9 @@ export function InterestAccrualHistoryCard({
     return snapshots.filter((s) => s.timestamp >= cutoff);
   }, [currentTimeMs, snapshots, windowValue]);
 
-  const { data, totalDelta, avgDelta, maxDelta, maxCumulative } = useMemo(() => {
+  const { data, totalDelta, avgDelta, maxDelta, endCumulative } = useMemo(() => {
     if (filteredSnapshots.length === 0) {
-      return { data: [], totalDelta: 0, avgDelta: 0, maxDelta: 0, maxCumulative: 0 };
+      return { data: [], totalDelta: 0, avgDelta: 0, maxDelta: 0, endCumulative: 0 };
     }
     // Recompute deltas within the filtered window (first row is baseline, delta=0).
     const points = filteredSnapshots.map((s, i) => ({
@@ -591,8 +591,8 @@ export function InterestAccrualHistoryCard({
     const total = deltasAfterFirst.reduce((sum, v) => sum + v, 0);
     const avg = deltasAfterFirst.length > 0 ? total / deltasAfterFirst.length : 0;
     const max = deltasAfterFirst.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
-    const maxCum = points.reduce((m, p) => Math.max(m, Math.abs(p.cumulativeUsd)), 0);
-    return { data: points, totalDelta: total, avgDelta: avg, maxDelta: max, maxCumulative: maxCum };
+    const end = points[points.length - 1]?.cumulativeUsd ?? 0;
+    return { data: points, totalDelta: total, avgDelta: avg, maxDelta: max, endCumulative: end };
   }, [filteredSnapshots]);
 
   const xTickFormatter = useMemo(() => {
@@ -638,8 +638,8 @@ export function InterestAccrualHistoryCard({
               <Stat label="Max day" value={fmtUsd(maxDelta)} />
             </div>
 
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart
+            <ResponsiveContainer width="100%" height={280}>
+              <ComposedChart
                 data={data}
                 style={CHART_STYLE}
                 margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
@@ -657,6 +657,16 @@ export function InterestAccrualHistoryCard({
                   minTickGap={30}
                 />
                 <YAxis
+                  yAxisId="delta"
+                  tickFormatter={(v: number) => fmtUsd(v)}
+                  tick={{ fill: CHART_COLORS.axis, fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={60}
+                />
+                <YAxis
+                  yAxisId="cumulative"
+                  orientation="right"
                   tickFormatter={(v: number) => fmtUsd(v)}
                   tick={{ fill: CHART_COLORS.axis, fontSize: 12 }}
                   tickLine={false}
@@ -690,12 +700,29 @@ export function InterestAccrualHistoryCard({
                   }}
                   cursor={{ fill: 'rgba(139, 158, 179, 0.15)' }}
                 />
-                <ReferenceLine y={0} stroke={CHART_COLORS.grid} />
-                <Bar dataKey="deltaUsd" name="Daily" fill={barColor} radius={[3, 3, 0, 0]} />
-              </BarChart>
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <ReferenceLine yAxisId="delta" y={0} stroke={CHART_COLORS.grid} />
+                <Bar
+                  yAxisId="delta"
+                  dataKey="deltaUsd"
+                  name="Daily"
+                  fill={barColor}
+                  radius={[3, 3, 0, 0]}
+                />
+                <Line
+                  yAxisId="cumulative"
+                  type="monotone"
+                  dataKey="cumulativeUsd"
+                  name="Cumulative"
+                  stroke={CHART_COLORS.supply}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
             <p className="text-xs text-muted-foreground">
-              Cumulative at end of window: {fmtUsd(maxCumulative)}
+              Cumulative at end of window: {fmtUsd(endCumulative)}
             </p>
           </>
         ) : (

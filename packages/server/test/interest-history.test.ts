@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { RateHistoryDb } from '../src/rateHistoryDb.js';
+import {
+  RateHistoryDb,
+  computeInterestDeltas,
+  shouldTakeInterestSnapshot,
+} from '../src/rateHistoryDb.js';
 
 function createDb(): RateHistoryDb {
   return new RateHistoryDb(':memory:');
@@ -70,6 +74,44 @@ test('queryInterestSnapshots filters by from/to range and sorts ascending', () =
   assert.equal(ranged.length, 1);
   assert.equal(ranged[0].timestamp, 2000);
   db.close();
+});
+
+test('computeInterestDeltas returns empty for empty input', () => {
+  assert.deepEqual(computeInterestDeltas([]), []);
+});
+
+test('computeInterestDeltas sets first row delta to 0', () => {
+  const rows = computeInterestDeltas([{ timestamp: 1000, cumulativeUsd: 10, label: 'm' }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].deltaUsd, 0);
+  assert.equal(rows[0].cumulativeUsd, 10);
+  assert.equal(rows[0].label, 'm');
+});
+
+test('computeInterestDeltas computes signed per-row deltas', () => {
+  const rows = computeInterestDeltas([
+    { timestamp: 1000, cumulativeUsd: 10, label: null },
+    { timestamp: 2000, cumulativeUsd: 15, label: null },
+    { timestamp: 3000, cumulativeUsd: 12, label: null },
+    { timestamp: 4000, cumulativeUsd: 20, label: null },
+  ]);
+  assert.deepEqual(
+    rows.map((r) => r.deltaUsd),
+    [0, 5, -3, 8],
+  );
+});
+
+test('shouldTakeInterestSnapshot with no prior snapshot returns true', () => {
+  assert.equal(shouldTakeInterestSnapshot(undefined, 1000, 100), true);
+});
+
+test('shouldTakeInterestSnapshot returns false before min interval', () => {
+  assert.equal(shouldTakeInterestSnapshot(1000, 1050, 100), false);
+});
+
+test('shouldTakeInterestSnapshot returns true at or after min interval', () => {
+  assert.equal(shouldTakeInterestSnapshot(1000, 1100, 100), true);
+  assert.equal(shouldTakeInterestSnapshot(1000, 1200, 100), true);
 });
 
 test('prune also removes old interest snapshots', () => {

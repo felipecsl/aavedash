@@ -15,6 +15,40 @@ export type InterestSnapshot = {
   label: string | null;
 };
 
+export type InterestDeltaRow = {
+  timestamp: number;
+  cumulativeUsd: number;
+  deltaUsd: number;
+  label: string | null;
+};
+
+/**
+ * Convert an ascending list of cumulative interest snapshots into rows carrying
+ * both the cumulative value and the delta from the previous row. The first row
+ * has `deltaUsd = 0` since there is no prior baseline in the series.
+ */
+export function computeInterestDeltas(rows: InterestSnapshot[]): InterestDeltaRow[] {
+  return rows.map((row, index) => ({
+    timestamp: row.timestamp,
+    cumulativeUsd: row.cumulativeUsd,
+    deltaUsd: index === 0 ? 0 : row.cumulativeUsd - (rows[index - 1]?.cumulativeUsd ?? 0),
+    label: row.label,
+  }));
+}
+
+/**
+ * Daily-snapshot gate: returns true when enough time has elapsed since the last
+ * snapshot to record a new one. Used by the monitor to throttle writes to ~once
+ * per day per position.
+ */
+export function shouldTakeInterestSnapshot(
+  lastTimestampMs: number | undefined,
+  nowMs: number,
+  minIntervalMs: number,
+): boolean {
+  return lastTimestampMs == null || nowMs - lastTimestampMs >= minIntervalMs;
+}
+
 export class RateHistoryDb {
   private db: Database.Database;
   private insertStmt: Database.Statement;

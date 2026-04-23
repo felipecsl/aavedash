@@ -16,7 +16,7 @@ import { logger } from './logger.js';
 import { fetchReserveTelemetry } from './reserveTelemetry.js';
 import { parseConfigBody } from './configSchema.js';
 import { formatStatusMessage } from './statusMessage.js';
-import { RateHistoryDb } from './rateHistoryDb.js';
+import { RateHistoryDb, computeInterestDeltas } from './rateHistoryDb.js';
 import { serializeConfig } from './configResponse.js';
 
 const tokenBalanceRequestSchema = z.object({
@@ -271,13 +271,7 @@ app.get('/api/interest/history', (req, res) => {
   }
   const { wallet, positionId, kind, from, to } = parsed.data;
   const rows = rateHistoryDb.queryInterestSnapshots(wallet, positionId, kind, from, to);
-  const snapshots = rows.map((row, index) => ({
-    timestamp: row.timestamp,
-    cumulativeUsd: row.cumulativeUsd,
-    deltaUsd: index === 0 ? 0 : row.cumulativeUsd - (rows[index - 1]?.cumulativeUsd ?? 0),
-    label: row.label,
-  }));
-  res.json({ snapshots });
+  res.json({ snapshots: computeInterestDeltas(rows) });
 });
 
 app.get('/api/health', (_req, res) => {
