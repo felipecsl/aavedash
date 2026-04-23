@@ -728,7 +728,7 @@ export function InterestAccrualHistoryCard({
         ) : (
           <div className="rounded-lg border border-border bg-accent px-4 py-5 text-sm text-muted-foreground">
             Need at least two daily snapshots to chart interest. Keep the server running — snapshots
-            are recorded every ~24h.
+            are recorded on every monitor poll and aggregated per day for display.
           </div>
         )}
       </CardContent>

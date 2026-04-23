@@ -36,19 +36,6 @@ export function computeInterestDeltas(rows: InterestSnapshot[]): InterestDeltaRo
   }));
 }
 
-/**
- * Daily-snapshot gate: returns true when enough time has elapsed since the last
- * snapshot to record a new one. Used by the monitor to throttle writes to ~once
- * per day per position.
- */
-export function shouldTakeInterestSnapshot(
-  lastTimestampMs: number | undefined,
-  nowMs: number,
-  minIntervalMs: number,
-): boolean {
-  return lastTimestampMs == null || nowMs - lastTimestampMs >= minIntervalMs;
-}
-
 export class RateHistoryDb {
   private db: Database.Database;
   private insertStmt: Database.Statement;
@@ -58,11 +45,14 @@ export class RateHistoryDb {
   private queryRangeStmt: Database.Statement;
   private pruneStmt: Database.Statement;
   private insertInterestStmt: Database.Statement;
-  private lastInterestTsStmt: Database.Statement;
   private queryInterestStmt: Database.Statement;
   private queryInterestFromStmt: Database.Statement;
   private queryInterestToStmt: Database.Statement;
   private queryInterestRangeStmt: Database.Statement;
+  private queryInterestDailyStmt: Database.Statement;
+  private queryInterestDailyFromStmt: Database.Statement;
+  private queryInterestDailyToStmt: Database.Statement;
+  private queryInterestDailyRangeStmt: Database.Statement;
   private pruneInterestStmt: Database.Statement;
 
   constructor(dbPath: string) {
@@ -131,9 +121,6 @@ export class RateHistoryDb {
     this.insertInterestStmt = this.db.prepare(
       'INSERT OR IGNORE INTO interest_snapshots (wallet, position_id, kind, label, timestamp, cumulative_usd) VALUES (?, ?, ?, ?, ?, ?)',
     );
-    this.lastInterestTsStmt = this.db.prepare(
-      'SELECT timestamp FROM interest_snapshots WHERE wallet = ? AND position_id = ? AND kind = ? ORDER BY timestamp DESC LIMIT 1',
-    );
     this.queryInterestStmt = this.db.prepare(
       `SELECT ${interestCols} FROM interest_snapshots WHERE wallet = ? AND position_id = ? AND kind = ? ORDER BY timestamp ASC`,
     );
@@ -145,6 +132,24 @@ export class RateHistoryDb {
     );
     this.queryInterestRangeStmt = this.db.prepare(
       `SELECT ${interestCols} FROM interest_snapshots WHERE wallet = ? AND position_id = ? AND kind = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC`,
+    );
+
+    // Day-bucketed variants: one row per UTC day, carrying the latest
+    // cumulative value for that day. Relies on SQLite's "bare column" rule
+    // for MAX() — the non-aggregated columns come from the row with MAX(timestamp).
+    const dayBucket = 'CAST(timestamp / 86400000 AS INTEGER)';
+    const dailyCols = `MAX(timestamp) AS timestamp, cumulative_usd, label`;
+    this.queryInterestDailyStmt = this.db.prepare(
+      `SELECT ${dailyCols} FROM interest_snapshots WHERE wallet = ? AND position_id = ? AND kind = ? GROUP BY ${dayBucket} ORDER BY timestamp ASC`,
+    );
+    this.queryInterestDailyFromStmt = this.db.prepare(
+      `SELECT ${dailyCols} FROM interest_snapshots WHERE wallet = ? AND position_id = ? AND kind = ? AND timestamp >= ? GROUP BY ${dayBucket} ORDER BY timestamp ASC`,
+    );
+    this.queryInterestDailyToStmt = this.db.prepare(
+      `SELECT ${dailyCols} FROM interest_snapshots WHERE wallet = ? AND position_id = ? AND kind = ? AND timestamp <= ? GROUP BY ${dayBucket} ORDER BY timestamp ASC`,
+    );
+    this.queryInterestDailyRangeStmt = this.db.prepare(
+      `SELECT ${dailyCols} FROM interest_snapshots WHERE wallet = ? AND position_id = ? AND kind = ? AND timestamp >= ? AND timestamp <= ? GROUP BY ${dayBucket} ORDER BY timestamp ASC`,
     );
     this.pruneInterestStmt = this.db.prepare('DELETE FROM interest_snapshots WHERE timestamp < ?');
   }
@@ -167,35 +172,39 @@ export class RateHistoryDb {
     );
   }
 
-  getLastInterestSnapshotTs(
-    wallet: string,
-    positionId: string,
-    kind: InterestKind,
-  ): number | undefined {
-    const row = this.lastInterestTsStmt.get(wallet.toLowerCase(), positionId, kind) as
-      | { timestamp: number }
-      | undefined;
-    return row?.timestamp;
-  }
-
   queryInterestSnapshots(
     wallet: string,
     positionId: string,
     kind: InterestKind,
     fromMs?: number,
     toMs?: number,
+    bucket: 'raw' | 'day' = 'raw',
   ): InterestSnapshot[] {
     type Row = { timestamp: number; cumulative_usd: number; label: string | null };
     const w = wallet.toLowerCase();
+    const stmts =
+      bucket === 'day'
+        ? {
+            all: this.queryInterestDailyStmt,
+            from: this.queryInterestDailyFromStmt,
+            to: this.queryInterestDailyToStmt,
+            range: this.queryInterestDailyRangeStmt,
+          }
+        : {
+            all: this.queryInterestStmt,
+            from: this.queryInterestFromStmt,
+            to: this.queryInterestToStmt,
+            range: this.queryInterestRangeStmt,
+          };
     let rows: Row[];
     if (fromMs != null && toMs != null) {
-      rows = this.queryInterestRangeStmt.all(w, positionId, kind, fromMs, toMs) as Row[];
+      rows = stmts.range.all(w, positionId, kind, fromMs, toMs) as Row[];
     } else if (fromMs != null) {
-      rows = this.queryInterestFromStmt.all(w, positionId, kind, fromMs) as Row[];
+      rows = stmts.from.all(w, positionId, kind, fromMs) as Row[];
     } else if (toMs != null) {
-      rows = this.queryInterestToStmt.all(w, positionId, kind, toMs) as Row[];
+      rows = stmts.to.all(w, positionId, kind, toMs) as Row[];
     } else {
-      rows = this.queryInterestStmt.all(w, positionId, kind) as Row[];
+      rows = stmts.all.all(w, positionId, kind) as Row[];
     }
     return rows.map((r) => ({
       timestamp: r.timestamp,

@@ -270,7 +270,7 @@ app.get('/api/interest/history', (req, res) => {
     return;
   }
   const { wallet, positionId, kind, from, to } = parsed.data;
-  const rows = rateHistoryDb.queryInterestSnapshots(wallet, positionId, kind, from, to);
+  const rows = rateHistoryDb.queryInterestSnapshots(wallet, positionId, kind, from, to, 'day');
   res.json({ snapshots: computeInterestDeltas(rows) });
 });
 

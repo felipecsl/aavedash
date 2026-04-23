@@ -23,7 +23,7 @@ import { Watchdog, type WatchdogLogEntry } from './watchdog.js';
 import { logger } from './logger.js';
 import { computeRescueAdjustedHF } from './rescueMetrics.js';
 import { fetchReserveTelemetry } from './reserveTelemetry.js';
-import { type RateHistoryDb, shouldTakeInterestSnapshot } from './rateHistoryDb.js';
+import { type RateHistoryDb } from './rateHistoryDb.js';
 
 export type LoanAlertState = {
   loanId: string;
@@ -580,24 +580,20 @@ export class Monitor {
       await this.watchdog.evaluate(loan, address);
     }
 
-    // Daily cumulative-interest snapshots for Morpho positions.
-    // Gated at 23h to allow a bit of drift between polls.
+    // Cumulative-interest snapshots for Morpho positions. Recorded every poll so
+    // the history DB has dense samples; display-side queries bucket by day.
     if (this.rateHistoryDb) {
-      const MIN_SNAPSHOT_INTERVAL_MS = 23 * 60 * 60 * 1000;
       for (const loan of morphoLoans) {
         if (loan.accruedBorrowInterestUsd == null) continue;
         try {
-          const last = this.rateHistoryDb.getLastInterestSnapshotTs(address, loan.id, 'loan');
-          if (shouldTakeInterestSnapshot(last, now, MIN_SNAPSHOT_INTERVAL_MS)) {
-            this.rateHistoryDb.appendInterestSnapshot(
-              address,
-              loan.id,
-              'loan',
-              loan.marketName,
-              now,
-              loan.accruedBorrowInterestUsd,
-            );
-          }
+          this.rateHistoryDb.appendInterestSnapshot(
+            address,
+            loan.id,
+            'loan',
+            loan.marketName,
+            now,
+            loan.accruedBorrowInterestUsd,
+          );
         } catch (err) {
           logger.warn({ err, loan: loan.id }, 'Failed to record loan interest snapshot');
         }
@@ -605,21 +601,14 @@ export class Monitor {
       for (const vault of morphoVaults) {
         if (vault.accruedEarningsUsd == null) continue;
         try {
-          const last = this.rateHistoryDb.getLastInterestSnapshotTs(
+          this.rateHistoryDb.appendInterestSnapshot(
             address,
             vault.vaultAddress,
             'vault',
+            vault.vaultName,
+            now,
+            vault.accruedEarningsUsd,
           );
-          if (shouldTakeInterestSnapshot(last, now, MIN_SNAPSHOT_INTERVAL_MS)) {
-            this.rateHistoryDb.appendInterestSnapshot(
-              address,
-              vault.vaultAddress,
-              'vault',
-              vault.vaultName,
-              now,
-              vault.accruedEarningsUsd,
-            );
-          }
         } catch (err) {
           logger.warn(
             { err, vault: vault.vaultAddress },

@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  RateHistoryDb,
-  computeInterestDeltas,
-  shouldTakeInterestSnapshot,
-} from '../src/rateHistoryDb.js';
+import { RateHistoryDb, computeInterestDeltas } from '../src/rateHistoryDb.js';
 
 function createDb(): RateHistoryDb {
   return new RateHistoryDb(':memory:');
@@ -43,18 +39,6 @@ test('duplicate (wallet, positionId, kind, timestamp) is ignored', () => {
   const rows = db.queryInterestSnapshots('0xabc', 'loan-1', 'loan');
   assert.equal(rows.length, 1);
   assert.equal(rows[0].cumulativeUsd, 1);
-  db.close();
-});
-
-test('getLastInterestSnapshotTs returns the most recent timestamp', () => {
-  const db = createDb();
-  assert.equal(db.getLastInterestSnapshotTs('0xabc', 'loan-1', 'loan'), undefined);
-
-  db.appendInterestSnapshot('0xabc', 'loan-1', 'loan', null, 1000, 1);
-  db.appendInterestSnapshot('0xabc', 'loan-1', 'loan', null, 3000, 3);
-  db.appendInterestSnapshot('0xabc', 'loan-1', 'loan', null, 2000, 2);
-
-  assert.equal(db.getLastInterestSnapshotTs('0xabc', 'loan-1', 'loan'), 3000);
   db.close();
 });
 
@@ -101,17 +85,45 @@ test('computeInterestDeltas computes signed per-row deltas', () => {
   );
 });
 
-test('shouldTakeInterestSnapshot with no prior snapshot returns true', () => {
-  assert.equal(shouldTakeInterestSnapshot(undefined, 1000, 100), true);
-});
+test('queryInterestSnapshots with bucket=day returns one row per UTC day (latest)', () => {
+  const db = createDb();
+  const day = 24 * 60 * 60 * 1000;
+  // Day 0 (UTC): three samples, last one wins
+  db.appendInterestSnapshot('0xabc', 'loan-1', 'loan', null, 1_000, 1);
+  db.appendInterestSnapshot('0xabc', 'loan-1', 'loan', null, 2_000, 2);
+  db.appendInterestSnapshot('0xabc', 'loan-1', 'loan', null, 3_000, 3);
+  // Day 1: two samples
+  db.appendInterestSnapshot('0xabc', 'loan-1', 'loan', null, day + 1_000, 10);
+  db.appendInterestSnapshot('0xabc', 'loan-1', 'loan', null, day + 5_000, 12);
+  // Day 2: one sample
+  db.appendInterestSnapshot('0xabc', 'loan-1', 'loan', null, 2 * day + 500, 15);
 
-test('shouldTakeInterestSnapshot returns false before min interval', () => {
-  assert.equal(shouldTakeInterestSnapshot(1000, 1050, 100), false);
-});
+  const rows = db.queryInterestSnapshots('0xabc', 'loan-1', 'loan', undefined, undefined, 'day');
+  assert.equal(rows.length, 3);
+  assert.deepEqual(
+    rows.map((r) => [r.timestamp, r.cumulativeUsd]),
+    [
+      [3_000, 3],
+      [day + 5_000, 12],
+      [2 * day + 500, 15],
+    ],
+  );
 
-test('shouldTakeInterestSnapshot returns true at or after min interval', () => {
-  assert.equal(shouldTakeInterestSnapshot(1000, 1100, 100), true);
-  assert.equal(shouldTakeInterestSnapshot(1000, 1200, 100), true);
+  // A mid-day repay (cumulative drops) on day 1 should still surface the
+  // last-of-day value, even if it's lower than earlier samples.
+  db.appendInterestSnapshot('0xabc', 'loan-1', 'loan', null, day + 10_000, 0);
+  const afterRepay = db.queryInterestSnapshots(
+    '0xabc',
+    'loan-1',
+    'loan',
+    undefined,
+    undefined,
+    'day',
+  );
+  const day1 = afterRepay.find((r) => r.timestamp === day + 10_000);
+  assert.ok(day1, 'expected latest day-1 row');
+  assert.equal(day1.cumulativeUsd, 0);
+  db.close();
 });
 
 test('prune also removes old interest snapshots', () => {
