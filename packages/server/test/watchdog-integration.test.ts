@@ -23,6 +23,10 @@ const RESCUE_INTERFACE = new Interface([
   'function previewResultingHf(address user, address asset, uint256 amount) view returns (uint256)',
 ]);
 
+type WatchdogInternals = {
+  provider?: unknown;
+};
+
 function createConfig(overrides: Partial<WatchdogConfig> = {}): WatchdogConfig {
   return {
     enabled: true,
@@ -135,12 +139,12 @@ function createWatchdog(
   options: { privateKey?: string | null; chatId?: string | null } = {},
 ): { watchdog: Watchdog; messages: string[] } {
   const messages: string[] = [];
-  const telegram = {
+  const telegram: TelegramClient = {
     async sendMessage(_chatId: string, text: string): Promise<boolean> {
       messages.push(text);
       return true;
     },
-  } as unknown as TelegramClient;
+  };
 
   return {
     watchdog: new Watchdog(
@@ -154,9 +158,27 @@ function createWatchdog(
   };
 }
 
+function createWatchdogWithTelegram(
+  config: WatchdogConfig,
+  telegram: TelegramClient,
+  options: { privateKey?: string | null; chatId?: string | null } = {},
+) {
+  return new Watchdog(
+    telegram,
+    () => options.chatId ?? '123',
+    () => config,
+    'http://localhost:8545',
+    options.privateKey === undefined ? '0xabc' : (options.privateKey ?? undefined),
+  );
+}
+
+function getWatchdogInternals(watchdog: Watchdog): WatchdogInternals {
+  return watchdog as unknown as WatchdogInternals;
+}
+
 function injectProvider(watchdog: Watchdog, provider: ReturnType<typeof createMockProvider>) {
   // Inject the mock provider so evaluate() uses it instead of creating a real one
-  (watchdog as unknown as { provider: unknown }).provider = provider;
+  getWatchdogInternals(watchdog).provider = provider;
 }
 
 // ─── findRequiredAmountRaw integration tests ────────────────────────────────
@@ -514,20 +536,16 @@ describe('evaluate integration with mock provider', () => {
     });
 
     const messages: string[] = [];
-    const telegram = {
+    const telegram: TelegramClient = {
       async sendMessage(_chatId: string, text: string): Promise<boolean> {
         messages.push(text);
         return true;
       },
-    } as unknown as TelegramClient;
+    };
 
-    const watchdog = new Watchdog(
-      telegram,
-      () => null, // getChatId returns null
-      () => createConfig({ dryRun: true }),
-      'http://localhost:8545',
-      '0xabc',
-    );
+    const watchdog = createWatchdogWithTelegram(createConfig({ dryRun: true }), telegram, {
+      chatId: null,
+    });
     injectProvider(watchdog, provider);
 
     await watchdog.evaluate(createLoan(), WALLET);

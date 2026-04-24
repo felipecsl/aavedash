@@ -7,6 +7,31 @@ import type { TelegramClient } from '../src/telegram.js';
 
 const WALLET = '0x1111111111111111111111111111111111111111';
 const RESCUE_CONTRACT = '0x2222222222222222222222222222222222222222';
+const PROJECTED_HF_WAD = 1_900_000_000_000_000_000n;
+
+type WatchdogReceipt = { status: number; hash: string };
+type WaitableTransaction = {
+  wait: () => Promise<WatchdogReceipt>;
+};
+type WatchdogInternals = {
+  getTokenBalance: (...args: unknown[]) => Promise<bigint>;
+  getTokenAllowance: (...args: unknown[]) => Promise<bigint>;
+  findRequiredAmountRawGeneric: (...args: unknown[]) => Promise<bigint | null>;
+  previewResultingHf: (...args: unknown[]) => Promise<bigint>;
+  getGasPriceGwei: (...args: unknown[]) => Promise<number>;
+  getEthBalance: (...args: unknown[]) => Promise<number>;
+  submitRescueTransaction: (...args: unknown[]) => Promise<string>;
+  waitForReceiptOrReplacement: (
+    tx: WaitableTransaction,
+    expectedTo: string,
+    expectedData: string,
+  ) => Promise<WatchdogReceipt>;
+  cooldowns: Map<string, number>;
+};
+
+function getWatchdogInternals(watchdog: Watchdog): WatchdogInternals {
+  return watchdog as unknown as WatchdogInternals;
+}
 
 function createConfig(overrides: Partial<WatchdogConfig> = {}): WatchdogConfig {
   return {
@@ -69,12 +94,12 @@ function createWatchdog(
   options: { privateKey?: string | null; chatId?: string | null } = {},
 ): { watchdog: Watchdog; messages: string[] } {
   const messages: string[] = [];
-  const telegram = {
+  const telegram: TelegramClient = {
     async sendMessage(_chatId: string, text: string): Promise<boolean> {
       messages.push(text);
       return true;
     },
-  } as unknown as TelegramClient;
+  };
 
   return {
     watchdog: new Watchdog(
@@ -88,33 +113,40 @@ function createWatchdog(
   };
 }
 
+function stubEvaluation(
+  watchdog: Watchdog,
+  overrides: Partial<WatchdogInternals> = {},
+): WatchdogInternals {
+  const internals = getWatchdogInternals(watchdog);
+  Object.assign(internals, {
+    getTokenBalance: async () => 100_000_000n,
+    getTokenAllowance: async () => 100_000_000n,
+    findRequiredAmountRawGeneric: async () => 1_000_000n,
+    previewResultingHf: async (...args: unknown[]) => {
+      const amount = args.at(-1);
+      return typeof amount === 'bigint' && amount > 0n
+        ? PROJECTED_HF_WAD
+        : 1_500_000_000_000_000_000n;
+    },
+    getGasPriceGwei: async () => 10,
+    getEthBalance: async () => 1,
+    submitRescueTransaction: async () => '0xabc123',
+    ...overrides,
+  });
+  return internals;
+}
+
 test('dry-run logs planned atomic rescue and applies cooldown', async () => {
   const { watchdog, messages } = createWatchdog(createConfig({ dryRun: true }));
   const targetHFWad = 1_900_000_000_000_000_000n;
 
-  (watchdog as unknown as { getTokenBalance: () => Promise<bigint> }).getTokenBalance = async () =>
-    100_000_000n;
-  (
-    watchdog as unknown as {
-      getTokenAllowance: () => Promise<bigint>;
-    }
-  ).getTokenAllowance = async () => 100_000_000n;
-  (
-    watchdog as unknown as {
-      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
-    }
-  ).findRequiredAmountRawGeneric = async () => 2_500_000n;
-  (
-    watchdog as unknown as {
-      previewResultingHf: () => Promise<bigint>;
-    }
-  ).previewResultingHf = async (
-    _provider: unknown,
-    _contract: string,
-    _user: string,
-    _debtToken: string,
-    amount: bigint,
-  ) => (amount > 0n ? targetHFWad : 1_500_000_000_000_000_000n);
+  stubEvaluation(watchdog, {
+    findRequiredAmountRawGeneric: async () => 2_500_000n,
+    previewResultingHf: async (...args: unknown[]) => {
+      const amount = args.at(-1);
+      return typeof amount === 'bigint' && amount > 0n ? targetHFWad : 1_500_000_000_000_000_000n;
+    },
+  });
 
   await watchdog.evaluate(createLoan(), WALLET);
 
@@ -130,23 +162,9 @@ test('dry-run logs planned atomic rescue and applies cooldown', async () => {
 test('live mode skips when private key is missing', async () => {
   const { watchdog } = createWatchdog(createConfig({ dryRun: false }), { privateKey: null });
 
-  (watchdog as unknown as { getTokenBalance: () => Promise<bigint> }).getTokenBalance = async () =>
-    100_000_000n;
-  (
-    watchdog as unknown as {
-      getTokenAllowance: () => Promise<bigint>;
-    }
-  ).getTokenAllowance = async () => 100_000_000n;
-  (
-    watchdog as unknown as {
-      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
-    }
-  ).findRequiredAmountRawGeneric = async () => 1_000_000n;
-  (
-    watchdog as unknown as {
-      previewResultingHf: () => Promise<bigint>;
-    }
-  ).previewResultingHf = async () => 1_900_000_000_000_000_000n;
+  stubEvaluation(watchdog, {
+    previewResultingHf: async () => PROJECTED_HF_WAD,
+  });
 
   await watchdog.evaluate(createLoan(), WALLET);
 
@@ -160,34 +178,10 @@ test('live mode allows executor key to differ from monitored wallet', async () =
     privateKey: '0x59c6995e998f97a5a0044966f0945382d7d6a4b5d1c4fdbb3c4c7d6c7e9f4b6a',
   });
 
-  (watchdog as unknown as { getTokenBalance: () => Promise<bigint> }).getTokenBalance = async () =>
-    100_000_000n;
-  (
-    watchdog as unknown as {
-      getTokenAllowance: () => Promise<bigint>;
-    }
-  ).getTokenAllowance = async () => 100_000_000n;
-  (
-    watchdog as unknown as {
-      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
-    }
-  ).findRequiredAmountRawGeneric = async () => 1_000_000n;
-  (
-    watchdog as unknown as {
-      previewResultingHf: () => Promise<bigint>;
-    }
-  ).previewResultingHf = async () => 1_900_000_000_000_000_000n;
-  (
-    watchdog as unknown as {
-      getGasPriceGwei: () => Promise<number>;
-    }
-  ).getGasPriceGwei = async () => 10;
-  (watchdog as unknown as { getEthBalance: () => Promise<number> }).getEthBalance = async () => 1;
-  (
-    watchdog as unknown as {
-      submitRescueTransaction: () => Promise<string>;
-    }
-  ).submitRescueTransaction = async () => '0xexecutor';
+  stubEvaluation(watchdog, {
+    previewResultingHf: async () => PROJECTED_HF_WAD,
+    submitRescueTransaction: async () => '0xexecutor',
+  });
 
   await watchdog.evaluate(createLoan(), WALLET);
 
@@ -201,34 +195,10 @@ test('live mode allows executor key to differ from monitored wallet', async () =
 test('live mode executes rescue and records tx hash', async () => {
   const { watchdog, messages } = createWatchdog(createConfig({ dryRun: false }));
 
-  (watchdog as unknown as { getTokenBalance: () => Promise<bigint> }).getTokenBalance = async () =>
-    100_000_000n;
-  (
-    watchdog as unknown as {
-      getTokenAllowance: () => Promise<bigint>;
-    }
-  ).getTokenAllowance = async () => 100_000_000n;
-  (
-    watchdog as unknown as {
-      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
-    }
-  ).findRequiredAmountRawGeneric = async () => 1_000_000n;
-  (
-    watchdog as unknown as {
-      previewResultingHf: () => Promise<bigint>;
-    }
-  ).previewResultingHf = async () => 1_900_000_000_000_000_000n;
-  (
-    watchdog as unknown as {
-      getGasPriceGwei: () => Promise<number>;
-    }
-  ).getGasPriceGwei = async () => 10;
-  (watchdog as unknown as { getEthBalance: () => Promise<number> }).getEthBalance = async () => 1;
-  (
-    watchdog as unknown as {
-      submitRescueTransaction: () => Promise<string>;
-    }
-  ).submitRescueTransaction = async () => '0xabc123';
+  stubEvaluation(watchdog, {
+    previewResultingHf: async () => PROJECTED_HF_WAD,
+    submitRescueTransaction: async () => '0xabc123',
+  });
 
   await watchdog.evaluate(createLoan(), WALLET);
 
@@ -265,15 +235,11 @@ test('waitForReceiptOrReplacement treats successful equivalent replacement as su
     },
   };
 
-  const resolvedReceipt = await (
-    watchdog as unknown as {
-      waitForReceiptOrReplacement: (
-        tx: typeof sentTx,
-        expectedTo: string,
-        expectedData: string,
-      ) => Promise<typeof receipt>;
-    }
-  ).waitForReceiptOrReplacement(sentTx, RESCUE_CONTRACT, expectedData);
+  const resolvedReceipt = await getWatchdogInternals(watchdog).waitForReceiptOrReplacement(
+    sentTx,
+    RESCUE_CONTRACT,
+    expectedData,
+  );
 
   assert.equal(resolvedReceipt.hash, replacementHash);
 });
@@ -281,23 +247,9 @@ test('waitForReceiptOrReplacement treats successful equivalent replacement as su
 test('cooldown prevents immediate re-execution', async () => {
   const { watchdog } = createWatchdog(createConfig({ dryRun: true }));
 
-  (watchdog as unknown as { getTokenBalance: () => Promise<bigint> }).getTokenBalance = async () =>
-    100_000_000n;
-  (
-    watchdog as unknown as {
-      getTokenAllowance: () => Promise<bigint>;
-    }
-  ).getTokenAllowance = async () => 100_000_000n;
-  (
-    watchdog as unknown as {
-      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
-    }
-  ).findRequiredAmountRawGeneric = async () => 1_000_000n;
-  (
-    watchdog as unknown as {
-      previewResultingHf: () => Promise<bigint>;
-    }
-  ).previewResultingHf = async () => 1_900_000_000_000_000_000n;
+  stubEvaluation(watchdog, {
+    previewResultingHf: async () => PROJECTED_HF_WAD,
+  });
 
   await watchdog.evaluate(createLoan(), WALLET);
   await watchdog.evaluate(createLoan(), WALLET);
@@ -321,36 +273,12 @@ test('invalid rescue contract produces skipped log entry', async () => {
 test('failed rescue tx logs error, sets cooldown, and notifies', async () => {
   const { watchdog, messages } = createWatchdog(createConfig({ dryRun: false }));
 
-  (watchdog as unknown as { getTokenBalance: () => Promise<bigint> }).getTokenBalance = async () =>
-    100_000_000n;
-  (
-    watchdog as unknown as {
-      getTokenAllowance: () => Promise<bigint>;
-    }
-  ).getTokenAllowance = async () => 100_000_000n;
-  (
-    watchdog as unknown as {
-      findRequiredAmountRawGeneric: () => Promise<bigint | null>;
-    }
-  ).findRequiredAmountRawGeneric = async () => 1_000_000n;
-  (
-    watchdog as unknown as {
-      previewResultingHf: () => Promise<bigint>;
-    }
-  ).previewResultingHf = async () => 1_900_000_000_000_000_000n;
-  (
-    watchdog as unknown as {
-      getGasPriceGwei: () => Promise<number>;
-    }
-  ).getGasPriceGwei = async () => 10;
-  (watchdog as unknown as { getEthBalance: () => Promise<number> }).getEthBalance = async () => 1;
-  (
-    watchdog as unknown as {
-      submitRescueTransaction: () => Promise<string>;
-    }
-  ).submitRescueTransaction = async () => {
-    throw new Error('Transaction reverted: 0xdead');
-  };
+  stubEvaluation(watchdog, {
+    previewResultingHf: async () => PROJECTED_HF_WAD,
+    submitRescueTransaction: async () => {
+      throw new Error('Transaction reverted: 0xdead');
+    },
+  });
 
   await watchdog.evaluate(createLoan(), WALLET);
 
@@ -360,7 +288,7 @@ test('failed rescue tx logs error, sets cooldown, and notifies', async () => {
   assert.match(log[0]?.reason ?? '', /Transaction reverted/);
 
   // Cooldown should be set to prevent retry flooding
-  const cooldowns = (watchdog as unknown as { cooldowns: Map<string, number> }).cooldowns;
+  const cooldowns = getWatchdogInternals(watchdog).cooldowns;
   assert.equal(cooldowns.has(`${WALLET}-loan-1`), true);
 
   // Notification should be sent

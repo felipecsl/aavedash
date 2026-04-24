@@ -8,6 +8,44 @@ import type { TelegramClient } from '../src/telegram.js';
 const WALLET = '0x1111111111111111111111111111111111111111';
 const RPC_URL = 'http://rpc.local';
 
+type MonitorInternals = {
+  poll: (options?: { notify: boolean }) => Promise<void>;
+  watchdog: {
+    evaluate: (loan: unknown, wallet: string) => Promise<void>;
+  };
+  states: Map<
+    string,
+    {
+      stuckSince: number | null;
+      lastNotifiedAt: number;
+    }
+  >;
+  utilizationStates: Map<string, UtilizationAlertState>;
+};
+
+function getMonitorInternals(monitor: Monitor): MonitorInternals {
+  return monitor as unknown as MonitorInternals;
+}
+
+function stubWatchdogEvaluate(monitor: Monitor) {
+  getMonitorInternals(monitor).watchdog.evaluate = async () => {};
+}
+
+function createTelegramStub(
+  sentMessages?: Array<{ chatId: string; text: string }>,
+): TelegramClient {
+  return {
+    sendMessage: async (chatId: string, text: string) => {
+      sentMessages?.push({ chatId, text });
+      return true;
+    },
+  } as TelegramClient;
+}
+
+async function pollMonitor(monitor: Monitor, notify: boolean) {
+  await getMonitorInternals(monitor).poll({ notify });
+}
+
 function createConfig(): AlertConfig {
   return {
     wallets: [{ address: WALLET, label: 'Main Wallet', enabled: true }],
@@ -124,16 +162,10 @@ function createMorphoPayload(debtUsdc: number) {
 
 test('groups multiple loan alerts for the same wallet into one telegram message', async () => {
   const sentMessages: Array<{ chatId: string; text: string }> = [];
-  const telegram = {
-    sendMessage: async (chatId: string, text: string) => {
-      sentMessages.push({ chatId, text });
-      return true;
-    },
-  } as unknown as TelegramClient;
+  const telegram = createTelegramStub(sentMessages);
 
   const monitor = new Monitor(telegram, createConfig, undefined, undefined, RPC_URL, undefined);
-  (monitor.watchdog as { evaluate: (loan: unknown, wallet: string) => Promise<void> }).evaluate =
-    async () => {};
+  stubWatchdogEvaluate(monitor);
 
   let phase: 'initial' | 'critical' = 'initial';
   const originalFetch = globalThis.fetch;
@@ -188,15 +220,11 @@ test('groups multiple loan alerts for the same wallet into one telegram message'
       throw new Error(`Unhandled fetch URL: ${href}`);
     }) as typeof fetch;
 
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
     assert.equal(sentMessages.length, 0);
 
     phase = 'critical';
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
 
     assert.equal(sentMessages.length, 1);
     assert.equal(sentMessages[0]?.chatId, 'chat-1');
@@ -213,16 +241,10 @@ test('groups multiple loan alerts for the same wallet into one telegram message'
 
 test('wallet reminder digest includes all non-safe loans when any loan is due', async () => {
   const sentMessages: Array<{ chatId: string; text: string }> = [];
-  const telegram = {
-    sendMessage: async (chatId: string, text: string) => {
-      sentMessages.push({ chatId, text });
-      return true;
-    },
-  } as unknown as TelegramClient;
+  const telegram = createTelegramStub(sentMessages);
 
   const monitor = new Monitor(telegram, createConfig, undefined, undefined, RPC_URL, undefined);
-  (monitor.watchdog as { evaluate: (loan: unknown, wallet: string) => Promise<void> }).evaluate =
-    async () => {};
+  stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
 
@@ -274,22 +296,10 @@ test('wallet reminder digest includes all non-safe loans when any loan is due', 
       throw new Error(`Unhandled fetch URL: ${href}`);
     }) as typeof fetch;
 
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
     assert.equal(sentMessages.length, 0);
 
-    const states = (
-      monitor as unknown as {
-        states: Map<
-          string,
-          {
-            stuckSince: number | null;
-            lastNotifiedAt: number;
-          }
-        >;
-      }
-    ).states;
+    const states = getMonitorInternals(monitor).states;
     const now = Date.now();
     const aaveState = states.get(`${WALLET}-proto_mainnet_v3`);
     const morphoState = states.get(`${WALLET}-morpho-loan-1`);
@@ -302,9 +312,7 @@ test('wallet reminder digest includes all non-safe loans when any loan is due', 
     aaveState.lastNotifiedAt = now - 31 * 60 * 1000;
     morphoState.lastNotifiedAt = now - 10 * 60 * 1000;
 
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
 
     assert.equal(sentMessages.length, 1);
     assert.match(sentMessages[0]!.text, /<b>Loan Alerts<\/b>/);
@@ -319,13 +327,10 @@ test('wallet reminder digest includes all non-safe loans when any loan is due', 
 });
 
 test('monitor state uses wallet debt-token balances to project rescue-adjusted HF', async () => {
-  const telegram = {
-    sendMessage: async () => true,
-  } as unknown as TelegramClient;
+  const telegram = createTelegramStub();
 
   const monitor = new Monitor(telegram, createConfig, undefined, undefined, RPC_URL, undefined);
-  (monitor.watchdog as { evaluate: (loan: unknown, wallet: string) => Promise<void> }).evaluate =
-    async () => {};
+  stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
 
@@ -383,9 +388,7 @@ test('monitor state uses wallet debt-token balances to project rescue-adjusted H
       throw new Error(`Unhandled fetch URL: ${href}`);
     }) as typeof fetch;
 
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: false,
-    });
+    await pollMonitor(monitor, false);
 
     const state = monitor
       .getStatus()
@@ -400,13 +403,10 @@ test('monitor state uses wallet debt-token balances to project rescue-adjusted H
 });
 
 test('monitor logs normalize mixed-case symbols and reuse per-loan usdPrice values', async () => {
-  const telegram = {
-    sendMessage: async () => true,
-  } as unknown as TelegramClient;
+  const telegram = createTelegramStub();
 
   const monitor = new Monitor(telegram, createConfig, undefined, undefined, RPC_URL, undefined);
-  (monitor.watchdog as { evaluate: (loan: unknown, wallet: string) => Promise<void> }).evaluate =
-    async () => {};
+  stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   const originalInfo = logger.info.bind(logger);
@@ -536,9 +536,7 @@ test('monitor logs normalize mixed-case symbols and reuse per-loan usdPrice valu
       throw new Error(`Unhandled fetch URL: ${href}`);
     }) as typeof fetch;
 
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: false,
-    });
+    await pollMonitor(monitor, false);
 
     const pricesResolved = entries.find((entry) => entry.msg === 'Prices resolved');
     assert.ok(pricesResolved);
@@ -650,31 +648,22 @@ function mockFetchForMorphoUtilization(utilization: number) {
 }
 
 function getUtilizationStates(monitor: Monitor): Map<string, UtilizationAlertState> {
-  return (monitor as unknown as { utilizationStates: Map<string, UtilizationAlertState> })
-    .utilizationStates;
+  return getMonitorInternals(monitor).utilizationStates;
 }
 
 test('utilization alert: first observation above threshold with chat on sends alert', async () => {
   const sentMessages: Array<{ chatId: string; text: string }> = [];
-  const telegram = {
-    sendMessage: async (chatId: string, text: string) => {
-      sentMessages.push({ chatId, text });
-      return true;
-    },
-  } as unknown as TelegramClient;
+  const telegram = createTelegramStub(sentMessages);
 
   const config = createUtilizationConfig();
   const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
-  (monitor.watchdog as { evaluate: (loan: unknown, wallet: string) => Promise<void> }).evaluate =
-    async () => {};
+  stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   try {
     globalThis.fetch = mockFetchForMorphoUtilization(0.95);
 
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
 
     assert.equal(sentMessages.length, 1);
     assert.match(sentMessages[0]!.text, /HIGH UTILIZATION/);
@@ -691,23 +680,18 @@ test('utilization alert: first observation above threshold with chat on sends al
 });
 
 test('utilization alert: first observation above threshold with chat off does not mark as alerted', async () => {
-  const telegram = {
-    sendMessage: async () => true,
-  } as unknown as TelegramClient;
+  const telegram = createTelegramStub();
 
   const config = createUtilizationConfig();
   config.telegram.enabled = false;
   const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
-  (monitor.watchdog as { evaluate: (loan: unknown, wallet: string) => Promise<void> }).evaluate =
-    async () => {};
+  stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   try {
     globalThis.fetch = mockFetchForMorphoUtilization(0.95);
 
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
 
     const states = getUtilizationStates(monitor);
     assert.equal(states.size, 1);
@@ -721,40 +705,28 @@ test('utilization alert: first observation above threshold with chat off does no
 
 test('utilization alert: below→above transition sends high alert, above→below sends normalized', async () => {
   const sentMessages: Array<{ chatId: string; text: string }> = [];
-  const telegram = {
-    sendMessage: async (chatId: string, text: string) => {
-      sentMessages.push({ chatId, text });
-      return true;
-    },
-  } as unknown as TelegramClient;
+  const telegram = createTelegramStub(sentMessages);
 
   const config = createUtilizationConfig({ cooldownMs: 0 });
   const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
-  (monitor.watchdog as { evaluate: (loan: unknown, wallet: string) => Promise<void> }).evaluate =
-    async () => {};
+  stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   try {
     // First poll: below threshold (80%)
     globalThis.fetch = mockFetchForMorphoUtilization(0.8);
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
     assert.equal(sentMessages.length, 0);
 
     // Second poll: above threshold (95%) → should alert
     globalThis.fetch = mockFetchForMorphoUtilization(0.95);
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
     assert.equal(sentMessages.length, 1);
     assert.match(sentMessages[0]!.text, /HIGH UTILIZATION/);
 
     // Third poll: back below (85%) → should send normalized
     globalThis.fetch = mockFetchForMorphoUtilization(0.85);
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
     assert.equal(sentMessages.length, 2);
     assert.match(sentMessages[1]!.text, /UTILIZATION NORMALIZED/);
   } finally {
@@ -764,26 +736,18 @@ test('utilization alert: below→above transition sends high alert, above→belo
 
 test('utilization alert: below→above with cooldown active defers alert to next eligible poll', async () => {
   const sentMessages: Array<{ chatId: string; text: string }> = [];
-  const telegram = {
-    sendMessage: async (chatId: string, text: string) => {
-      sentMessages.push({ chatId, text });
-      return true;
-    },
-  } as unknown as TelegramClient;
+  const telegram = createTelegramStub(sentMessages);
 
   // Use a very long cooldown so the second poll is still within cooldown
   const config = createUtilizationConfig({ cooldownMs: 999_999_999 });
   const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
-  (monitor.watchdog as { evaluate: (loan: unknown, wallet: string) => Promise<void> }).evaluate =
-    async () => {};
+  stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   try {
     // First poll at 80%: below threshold, initializes state with lastNotifiedAt=0
     globalThis.fetch = mockFetchForMorphoUtilization(0.8);
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
 
     // Set lastNotifiedAt to now to simulate a recent notification
     const states = getUtilizationStates(monitor);
@@ -792,9 +756,7 @@ test('utilization alert: below→above with cooldown active defers alert to next
 
     // Second poll at 95%: above threshold but cooldown is active
     globalThis.fetch = mockFetchForMorphoUtilization(0.95);
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
 
     // No alert sent due to cooldown — and alerted is still false
     assert.equal(sentMessages.length, 0);
@@ -805,30 +767,23 @@ test('utilization alert: below→above with cooldown active defers alert to next
 });
 
 test('utilization alert: wallet disable cleans up utilization states', async () => {
-  const telegram = {
-    sendMessage: async () => true,
-  } as unknown as TelegramClient;
+  const telegram = createTelegramStub();
 
   const config = createUtilizationConfig();
   const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
-  (monitor.watchdog as { evaluate: (loan: unknown, wallet: string) => Promise<void> }).evaluate =
-    async () => {};
+  stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   try {
     globalThis.fetch = mockFetchForMorphoUtilization(0.8);
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
 
     const states = getUtilizationStates(monitor);
     assert.equal(states.size, 1);
 
     // Disable the wallet
     config.wallets[0]!.enabled = false;
-    await (monitor as unknown as { poll: (options?: { notify: boolean }) => Promise<void> }).poll({
-      notify: true,
-    });
+    await pollMonitor(monitor, true);
 
     assert.equal(states.size, 0);
   } finally {

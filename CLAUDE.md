@@ -100,13 +100,15 @@ Frontend notes:
 
 ## Architecture
 
-This is a single-page React 19 + TypeScript + Vite app. Nearly all application logic lives in **`src/App.tsx`** (~1000 lines), which is a single large component containing:
+This is a single-page React 19 + TypeScript + Vite app with a small Express/TypeScript backend under `packages/server`.
 
-- **Type definitions** — `RawUserReserve`, `AssetPosition`, `LoanPosition`, `FetchState`
-- **Data fetching** — queries Aave subgraph (The Graph) for user reserves across supported markets (`proto_mainnet_v3`, `proto_lido_v3`), fetches token prices from CoinGecko
-- **Loan grouping** — raw reserves are grouped into `LoanPosition` objects per borrowed asset per market
-- **Metric computation** — health factor, LTV, liquidation price, leverage, borrow headroom, carry/net APY, all computed inline
-- **Rendering** — portfolio-level aggregates, tabbed per-loan details, sensitivity cards, monitoring checklist
+Frontend structure:
+
+- `src/App.tsx` coordinates wallet loading, polling/refresh timers, selection state, and server-backed chart/history queries
+- `src/components/dashboard/*` renders wallet search, summary cards, loan/vault tables, and loan detail panels
+- `src/components/ServerSettings.tsx` owns the alert/watchdog/utilization settings drawer and `/api/config` integration
+- `src/api/aaveMonitor.ts` contains frontend API calls for server-backed data such as reserve telemetry, rate history, and portfolio history
+- `packages/aave-core/src/*` owns shared protocol fetchers, position builders, and portfolio math used by both frontend and backend
 
 Supporting files:
 
@@ -115,7 +117,7 @@ Supporting files:
 - `src/components/ui/` — shadcn/ui-style primitives (Button, Card, Badge, Input, Separator)
 - `src/lib/utils.ts` — `cn()` utility (clsx + tailwind-merge)
 
-Testing currently exists for backend watchdog/config behavior in `packages/server/test/*.test.ts` and runs with `yarn test`. There is still no routing, no state management library, and no API abstraction layer. The app is self-contained with external data coming from The Graph and CoinGecko APIs.
+Testing currently lives in `packages/server/test/*.test.ts` and runs with `yarn test`. Coverage includes monitor polling/status behavior, watchdog execution/cooldown behavior, Telegram formatting/command handling, storage/config migration, reserve telemetry, and rate-history persistence. There is still no routing or client-side state management library; the frontend remains largely local-state driven, with external data coming from The Graph, CoinGecko, Morpho, and the local Express API.
 
 ## Deployment
 

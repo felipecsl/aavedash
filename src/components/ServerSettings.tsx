@@ -250,6 +250,70 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const applyConfigUpdate = (
+    updater: (current: AlertConfig) => AlertConfig,
+    options?: { persist?: boolean },
+  ) => {
+    if (!config) return;
+    const updated = updater(config);
+    setConfig(updated);
+    if (options?.persist) {
+      void saveConfig(updated);
+    }
+  };
+
+  const updateTelegram = (
+    patch: Partial<AlertConfig['telegram']>,
+    options?: { persist?: boolean },
+  ) => {
+    applyConfigUpdate(
+      (current) => ({
+        ...current,
+        telegram: { ...current.telegram, ...patch },
+      }),
+      options,
+    );
+  };
+
+  const updateWatchdog = (
+    patch: Partial<AlertConfig['watchdog']>,
+    options?: { persist?: boolean },
+  ) => {
+    applyConfigUpdate(
+      (current) => ({
+        ...current,
+        watchdog: { ...current.watchdog, ...patch },
+      }),
+      options,
+    );
+  };
+
+  const updateUtilization = (
+    patch: Partial<AlertConfig['utilization']>,
+    options?: { persist?: boolean },
+  ) => {
+    applyConfigUpdate(
+      (current) => ({
+        ...current,
+        utilization: { ...current.utilization, ...patch },
+      }),
+      options,
+    );
+  };
+
+  const updatePolling = (
+    patch: Partial<AlertConfig['polling']>,
+    options?: { persist?: boolean },
+  ) => {
+    applyConfigUpdate(
+      (current) => ({
+        ...current,
+        polling: { ...current.polling, ...patch },
+      }),
+      options,
+    );
+  };
+
   const sendTest = async () => {
     if (!backendAvailable) {
       setTestStatus('error');
@@ -271,38 +335,42 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
 
   const addWallet = () => {
     if (!config || !newWalletAddress.trim()) return;
-    const updated: AlertConfig = {
-      ...config,
-      wallets: [
-        ...config.wallets,
-        {
-          address: newWalletAddress.trim(),
-          label: newWalletLabel.trim() || undefined,
-          enabled: true,
-        },
-      ],
-    };
+    applyConfigUpdate(
+      (current) => ({
+        ...current,
+        wallets: [
+          ...current.wallets,
+          {
+            address: newWalletAddress.trim(),
+            label: newWalletLabel.trim() || undefined,
+            enabled: true,
+          },
+        ],
+      }),
+      { persist: true },
+    );
     setNewWalletAddress('');
     setNewWalletLabel('');
-    void saveConfig(updated);
   };
 
   const removeWallet = (index: number) => {
-    if (!config) return;
-    const updated: AlertConfig = {
-      ...config,
-      wallets: config.wallets.filter((_, i) => i !== index),
-    };
-    void saveConfig(updated);
+    applyConfigUpdate(
+      (current) => ({
+        ...current,
+        wallets: current.wallets.filter((_, i) => i !== index),
+      }),
+      { persist: true },
+    );
   };
 
   const toggleWallet = (index: number) => {
-    if (!config) return;
-    const updated: AlertConfig = {
-      ...config,
-      wallets: config.wallets.map((w, i) => (i === index ? { ...w, enabled: !w.enabled } : w)),
-    };
-    void saveConfig(updated);
+    applyConfigUpdate(
+      (current) => ({
+        ...current,
+        wallets: current.wallets.map((w, i) => (i === index ? { ...w, enabled: !w.enabled } : w)),
+      }),
+      { persist: true },
+    );
   };
 
   return (
@@ -346,21 +414,10 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         <span className="text-muted-foreground">Chat ID</span>
                         <Input
                           value={config.telegram.chatId}
-                          onChange={(e) => {
-                            const updated = {
-                              ...config,
-                              telegram: { ...config.telegram, chatId: e.target.value },
-                            };
-                            setConfig(updated);
-                          }}
-                          onBlur={(e) => {
-                            const updated = {
-                              ...config,
-                              telegram: { ...config.telegram, chatId: e.target.value },
-                            };
-                            setConfig(updated);
-                            void saveConfig(updated);
-                          }}
+                          onChange={(e) => updateTelegram({ chatId: e.target.value })}
+                          onBlur={(e) =>
+                            updateTelegram({ chatId: e.target.value }, { persist: true })
+                          }
                           placeholder="e.g. 123456789"
                         />
                       </label>
@@ -370,13 +427,12 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                           <input
                             type="checkbox"
                             checked={config.telegram.enabled}
-                            onChange={() => {
-                              const updated = {
-                                ...config,
-                                telegram: { ...config.telegram, enabled: !config.telegram.enabled },
-                              };
-                              void saveConfig(updated);
-                            }}
+                            onChange={() =>
+                              updateTelegram(
+                                { enabled: !config.telegram.enabled },
+                                { persist: true },
+                              )
+                            }
                             className="accent-primary"
                           />
                           Enable notifications
@@ -479,16 +535,9 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         <input
                           type="checkbox"
                           checked={config.watchdog.enabled}
-                          onChange={() => {
-                            const updated = {
-                              ...config,
-                              watchdog: {
-                                ...config.watchdog,
-                                enabled: !config.watchdog.enabled,
-                              },
-                            };
-                            void saveConfig(updated);
-                          }}
+                          onChange={() =>
+                            updateWatchdog({ enabled: !config.watchdog.enabled }, { persist: true })
+                          }
                           className="accent-primary"
                         />
                         Enable watchdog
@@ -497,16 +546,9 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         <input
                           type="checkbox"
                           checked={config.watchdog.dryRun}
-                          onChange={() => {
-                            const updated = {
-                              ...config,
-                              watchdog: {
-                                ...config.watchdog,
-                                dryRun: !config.watchdog.dryRun,
-                              },
-                            };
-                            void saveConfig(updated);
-                          }}
+                          onChange={() =>
+                            updateWatchdog({ dryRun: !config.watchdog.dryRun }, { persist: true })
+                          }
                           className="accent-primary"
                         />
                         Dry run mode
@@ -524,28 +566,11 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                       minResultingHF={config.watchdog.minResultingHF}
                       targetHF={config.watchdog.targetHF}
                       onChange={({ triggerHF, minResultingHF, targetHF }) => {
-                        setConfig({
-                          ...config,
-                          watchdog: {
-                            ...config.watchdog,
-                            triggerHF,
-                            minResultingHF,
-                            targetHF,
-                          },
-                        });
+                        updateWatchdog({ triggerHF, minResultingHF, targetHF });
                       }}
-                      onCommit={({ triggerHF, minResultingHF, targetHF }) => {
-                        const updated = {
-                          ...config,
-                          watchdog: {
-                            ...config.watchdog,
-                            triggerHF,
-                            minResultingHF,
-                            targetHF,
-                          },
-                        };
-                        void saveConfig(updated);
-                      }}
+                      onCommit={({ triggerHF, minResultingHF, targetHF }) =>
+                        updateWatchdog({ triggerHF, minResultingHF, targetHF }, { persist: true })
+                      }
                     />
 
                     <label className="grid gap-1.5 text-sm">
@@ -555,26 +580,15 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         min="1"
                         step="1"
                         value={Math.round(config.watchdog.cooldownMs / 60_000)}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              cooldownMs: Number(e.target.value) * 60_000,
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              cooldownMs: Number(e.target.value) * 60_000,
-                            },
-                          };
-                          void saveConfig(updated);
-                        }}
+                        onChange={(e) =>
+                          updateWatchdog({ cooldownMs: Number(e.target.value) * 60_000 })
+                        }
+                        onBlur={(e) =>
+                          updateWatchdog(
+                            { cooldownMs: Number(e.target.value) * 60_000 },
+                            { persist: true },
+                          )
+                        }
                         className="w-[120px]"
                       />
                     </label>
@@ -588,26 +602,13 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         min="1"
                         step="1"
                         value={config.watchdog.maxRepayAmount}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              maxRepayAmount: Number(e.target.value),
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              maxRepayAmount: Number(e.target.value),
-                            },
-                          };
-                          void saveConfig(updated);
-                        }}
+                        onChange={(e) => updateWatchdog({ maxRepayAmount: Number(e.target.value) })}
+                        onBlur={(e) =>
+                          updateWatchdog(
+                            { maxRepayAmount: Number(e.target.value) },
+                            { persist: true },
+                          )
+                        }
                         className="w-[120px]"
                       />
                     </label>
@@ -619,26 +620,15 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         min="1"
                         step="1"
                         value={Math.round(config.watchdog.deadlineSeconds)}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              deadlineSeconds: Number(e.target.value),
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              deadlineSeconds: Number(e.target.value),
-                            },
-                          };
-                          void saveConfig(updated);
-                        }}
+                        onChange={(e) =>
+                          updateWatchdog({ deadlineSeconds: Number(e.target.value) })
+                        }
+                        onBlur={(e) =>
+                          updateWatchdog(
+                            { deadlineSeconds: Number(e.target.value) },
+                            { persist: true },
+                          )
+                        }
                         className="w-[120px]"
                       />
                     </label>
@@ -647,26 +637,13 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                       <span className="text-muted-foreground">Aave rescue contract</span>
                       <Input
                         value={config.watchdog.rescueContract}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              rescueContract: e.target.value.trim(),
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              rescueContract: e.target.value.trim(),
-                            },
-                          };
-                          void saveConfig(updated);
-                        }}
+                        onChange={(e) => updateWatchdog({ rescueContract: e.target.value.trim() })}
+                        onBlur={(e) =>
+                          updateWatchdog(
+                            { rescueContract: e.target.value.trim() },
+                            { persist: true },
+                          )
+                        }
                         placeholder="0x..."
                         className="font-mono text-xs"
                       />
@@ -676,26 +653,15 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                       <span className="text-muted-foreground">Morpho rescue contract</span>
                       <Input
                         value={config.watchdog.morphoRescueContract}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              morphoRescueContract: e.target.value.trim(),
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              morphoRescueContract: e.target.value.trim(),
-                            },
-                          };
-                          void saveConfig(updated);
-                        }}
+                        onChange={(e) =>
+                          updateWatchdog({ morphoRescueContract: e.target.value.trim() })
+                        }
+                        onBlur={(e) =>
+                          updateWatchdog(
+                            { morphoRescueContract: e.target.value.trim() },
+                            { persist: true },
+                          )
+                        }
                         placeholder="0x..."
                         className="font-mono text-xs"
                       />
@@ -708,26 +674,10 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         min="1"
                         step="1"
                         value={Math.round(config.watchdog.maxGasGwei)}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              maxGasGwei: Number(e.target.value),
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={(e) => {
-                          const updated = {
-                            ...config,
-                            watchdog: {
-                              ...config.watchdog,
-                              maxGasGwei: Number(e.target.value),
-                            },
-                          };
-                          void saveConfig(updated);
-                        }}
+                        onChange={(e) => updateWatchdog({ maxGasGwei: Number(e.target.value) })}
+                        onBlur={(e) =>
+                          updateWatchdog({ maxGasGwei: Number(e.target.value) }, { persist: true })
+                        }
                         className="w-[120px]"
                       />
                     </label>
@@ -752,16 +702,12 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                       <input
                         type="checkbox"
                         checked={config.utilization.enabled}
-                        onChange={() => {
-                          const updated = {
-                            ...config,
-                            utilization: {
-                              ...config.utilization,
-                              enabled: !config.utilization.enabled,
-                            },
-                          };
-                          void saveConfig(updated);
-                        }}
+                        onChange={() =>
+                          updateUtilization(
+                            { enabled: !config.utilization.enabled },
+                            { persist: true },
+                          )
+                        }
                         className="accent-primary"
                       />
                       Enable utilization alerts
@@ -775,26 +721,15 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         max="100"
                         step="1"
                         value={Math.round(config.utilization.defaultThreshold * 100)}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            utilization: {
-                              ...config.utilization,
-                              defaultThreshold: Number(e.target.value) / 100,
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={(e) => {
-                          const updated = {
-                            ...config,
-                            utilization: {
-                              ...config.utilization,
-                              defaultThreshold: Number(e.target.value) / 100,
-                            },
-                          };
-                          void saveConfig(updated);
-                        }}
+                        onChange={(e) =>
+                          updateUtilization({ defaultThreshold: Number(e.target.value) / 100 })
+                        }
+                        onBlur={(e) =>
+                          updateUtilization(
+                            { defaultThreshold: Number(e.target.value) / 100 },
+                            { persist: true },
+                          )
+                        }
                         className="w-[100px]"
                       />
                     </label>
@@ -806,26 +741,15 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         min="1"
                         step="1"
                         value={Math.round(config.utilization.cooldownMs / 60_000)}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            utilization: {
-                              ...config.utilization,
-                              cooldownMs: Number(e.target.value) * 60_000,
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={(e) => {
-                          const updated = {
-                            ...config,
-                            utilization: {
-                              ...config.utilization,
-                              cooldownMs: Number(e.target.value) * 60_000,
-                            },
-                          };
-                          void saveConfig(updated);
-                        }}
+                        onChange={(e) =>
+                          updateUtilization({ cooldownMs: Number(e.target.value) * 60_000 })
+                        }
+                        onBlur={(e) =>
+                          updateUtilization(
+                            { cooldownMs: Number(e.target.value) * 60_000 },
+                            { persist: true },
+                          )
+                        }
                         className="w-[100px]"
                       />
                     </label>
@@ -848,8 +772,10 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                   <div className="mt-3">
                     <ZoneSlider
                       zones={config.zones}
-                      onChange={(zones) => setConfig({ ...config, zones })}
-                      onCommit={(zones) => void saveConfig({ ...config, zones })}
+                      onChange={(zones) => applyConfigUpdate((current) => ({ ...current, zones }))}
+                      onCommit={(zones) =>
+                        applyConfigUpdate((current) => ({ ...current, zones }), { persist: true })
+                      }
                     />
                   </div>
                 ) : null}
@@ -874,17 +800,15 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         type="number"
                         min="1"
                         value={Math.round(config.polling.intervalMs / 60_000)}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            polling: {
-                              ...config.polling,
-                              intervalMs: Number(e.target.value) * 60_000,
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={() => void saveConfig(config)}
+                        onChange={(e) =>
+                          updatePolling({ intervalMs: Number(e.target.value) * 60_000 })
+                        }
+                        onBlur={(e) =>
+                          updatePolling(
+                            { intervalMs: Number(e.target.value) * 60_000 },
+                            { persist: true },
+                          )
+                        }
                         className="w-[100px]"
                       />
                     </label>
@@ -894,17 +818,13 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         type="number"
                         min="1"
                         value={config.polling.debounceChecks}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            polling: {
-                              ...config.polling,
-                              debounceChecks: Number(e.target.value),
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={() => void saveConfig(config)}
+                        onChange={(e) => updatePolling({ debounceChecks: Number(e.target.value) })}
+                        onBlur={(e) =>
+                          updatePolling(
+                            { debounceChecks: Number(e.target.value) },
+                            { persist: true },
+                          )
+                        }
                         className="w-[100px]"
                       />
                     </label>
@@ -914,17 +834,15 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         type="number"
                         min="1"
                         value={Math.round(config.polling.reminderIntervalMs / 60_000)}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            polling: {
-                              ...config.polling,
-                              reminderIntervalMs: Number(e.target.value) * 60_000,
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={() => void saveConfig(config)}
+                        onChange={(e) =>
+                          updatePolling({ reminderIntervalMs: Number(e.target.value) * 60_000 })
+                        }
+                        onBlur={(e) =>
+                          updatePolling(
+                            { reminderIntervalMs: Number(e.target.value) * 60_000 },
+                            { persist: true },
+                          )
+                        }
                         className="w-[100px]"
                       />
                     </label>
@@ -934,17 +852,15 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         type="number"
                         min="1"
                         value={Math.round(config.polling.cooldownMs / 60_000)}
-                        onChange={(e) => {
-                          const updated = {
-                            ...config,
-                            polling: {
-                              ...config.polling,
-                              cooldownMs: Number(e.target.value) * 60_000,
-                            },
-                          };
-                          setConfig(updated);
-                        }}
-                        onBlur={() => void saveConfig(config)}
+                        onChange={(e) =>
+                          updatePolling({ cooldownMs: Number(e.target.value) * 60_000 })
+                        }
+                        onBlur={(e) =>
+                          updatePolling(
+                            { cooldownMs: Number(e.target.value) * 60_000 },
+                            { persist: true },
+                          )
+                        }
                         className="w-[100px]"
                       />
                     </label>

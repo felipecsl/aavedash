@@ -264,7 +264,9 @@ export default function App() {
         if (cancelled) return;
         setLoanInterestHistory(snapshots);
       });
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
     setLoanInterestHistory([]);
