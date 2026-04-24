@@ -14,6 +14,7 @@ import {
   fetchUsdPrices,
   buildLoanPositions,
   computeLoanMetrics,
+  computePortfolioSummary,
   DEFAULT_ZONES,
 } from '@aave-monitor/core';
 import { intervalToDuration } from 'date-fns';
@@ -636,6 +637,24 @@ export class Monitor {
         } catch (err) {
           logger.warn({ err, vault: vault.vaultAddress }, 'Failed to record vault rate sample');
         }
+      }
+
+      try {
+        const summary = computePortfolioSummary(loans, morphoVaults, walletBorrowedAssetBalances);
+        if (summary) {
+          this.rateHistoryDb.appendPortfolioSnapshot(
+            address,
+            now,
+            summary.totalDebt,
+            summary.totalAssets,
+            summary.totalNetWorth,
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          { err, wallet: this.shortAddr(address) },
+          'Failed to record portfolio snapshot',
+        );
       }
     }
 

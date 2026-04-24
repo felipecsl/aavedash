@@ -22,6 +22,13 @@ export type InterestDeltaRow = {
   label: string | null;
 };
 
+export type PortfolioSnapshot = {
+  timestamp: number;
+  totalDebt: number;
+  totalAssets: number;
+  netWorth: number;
+};
+
 /**
  * Convert an ascending list of cumulative interest snapshots into rows carrying
  * both the cumulative value and the delta from the previous row. The first row
@@ -54,6 +61,16 @@ export class RateHistoryDb {
   private queryInterestDailyToStmt: Database.Statement;
   private queryInterestDailyRangeStmt: Database.Statement;
   private pruneInterestStmt: Database.Statement;
+  private insertPortfolioStmt: Database.Statement;
+  private queryPortfolioStmt: Database.Statement;
+  private queryPortfolioFromStmt: Database.Statement;
+  private queryPortfolioToStmt: Database.Statement;
+  private queryPortfolioRangeStmt: Database.Statement;
+  private queryPortfolioDailyStmt: Database.Statement;
+  private queryPortfolioDailyFromStmt: Database.Statement;
+  private queryPortfolioDailyToStmt: Database.Statement;
+  private queryPortfolioDailyRangeStmt: Database.Statement;
+  private prunePortfolioStmt: Database.Statement;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
@@ -152,6 +169,115 @@ export class RateHistoryDb {
       `SELECT ${dailyCols} FROM interest_snapshots WHERE wallet = ? AND position_id = ? AND kind = ? AND timestamp >= ? AND timestamp <= ? GROUP BY ${dayBucket} ORDER BY timestamp ASC`,
     );
     this.pruneInterestStmt = this.db.prepare('DELETE FROM interest_snapshots WHERE timestamp < ?');
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        wallet       TEXT    NOT NULL,
+        timestamp    INTEGER NOT NULL,
+        total_debt   REAL    NOT NULL,
+        total_assets REAL    NOT NULL,
+        net_worth    REAL    NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_snapshots_unique
+        ON portfolio_snapshots (wallet, timestamp);
+    `);
+
+    const portfolioCols = 'timestamp, total_debt, total_assets, net_worth';
+    this.insertPortfolioStmt = this.db.prepare(
+      'INSERT OR IGNORE INTO portfolio_snapshots (wallet, timestamp, total_debt, total_assets, net_worth) VALUES (?, ?, ?, ?, ?)',
+    );
+    this.queryPortfolioStmt = this.db.prepare(
+      `SELECT ${portfolioCols} FROM portfolio_snapshots WHERE wallet = ? ORDER BY timestamp ASC`,
+    );
+    this.queryPortfolioFromStmt = this.db.prepare(
+      `SELECT ${portfolioCols} FROM portfolio_snapshots WHERE wallet = ? AND timestamp >= ? ORDER BY timestamp ASC`,
+    );
+    this.queryPortfolioToStmt = this.db.prepare(
+      `SELECT ${portfolioCols} FROM portfolio_snapshots WHERE wallet = ? AND timestamp <= ? ORDER BY timestamp ASC`,
+    );
+    this.queryPortfolioRangeStmt = this.db.prepare(
+      `SELECT ${portfolioCols} FROM portfolio_snapshots WHERE wallet = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC`,
+    );
+
+    const portfolioDayBucket = 'CAST(timestamp / 86400000 AS INTEGER)';
+    const portfolioDailyCols = `MAX(timestamp) AS timestamp, total_debt, total_assets, net_worth`;
+    this.queryPortfolioDailyStmt = this.db.prepare(
+      `SELECT ${portfolioDailyCols} FROM portfolio_snapshots WHERE wallet = ? GROUP BY ${portfolioDayBucket} ORDER BY timestamp ASC`,
+    );
+    this.queryPortfolioDailyFromStmt = this.db.prepare(
+      `SELECT ${portfolioDailyCols} FROM portfolio_snapshots WHERE wallet = ? AND timestamp >= ? GROUP BY ${portfolioDayBucket} ORDER BY timestamp ASC`,
+    );
+    this.queryPortfolioDailyToStmt = this.db.prepare(
+      `SELECT ${portfolioDailyCols} FROM portfolio_snapshots WHERE wallet = ? AND timestamp <= ? GROUP BY ${portfolioDayBucket} ORDER BY timestamp ASC`,
+    );
+    this.queryPortfolioDailyRangeStmt = this.db.prepare(
+      `SELECT ${portfolioDailyCols} FROM portfolio_snapshots WHERE wallet = ? AND timestamp >= ? AND timestamp <= ? GROUP BY ${portfolioDayBucket} ORDER BY timestamp ASC`,
+    );
+    this.prunePortfolioStmt = this.db.prepare(
+      'DELETE FROM portfolio_snapshots WHERE timestamp < ?',
+    );
+  }
+
+  appendPortfolioSnapshot(
+    wallet: string,
+    timestampMs: number,
+    totalDebt: number,
+    totalAssets: number,
+    netWorth: number,
+  ): void {
+    this.insertPortfolioStmt.run(
+      wallet.toLowerCase(),
+      timestampMs,
+      totalDebt,
+      totalAssets,
+      netWorth,
+    );
+  }
+
+  queryPortfolioSnapshots(
+    wallet: string,
+    fromMs?: number,
+    toMs?: number,
+    bucket: 'raw' | 'day' = 'raw',
+  ): PortfolioSnapshot[] {
+    type Row = {
+      timestamp: number;
+      total_debt: number;
+      total_assets: number;
+      net_worth: number;
+    };
+    const w = wallet.toLowerCase();
+    const stmts =
+      bucket === 'day'
+        ? {
+            all: this.queryPortfolioDailyStmt,
+            from: this.queryPortfolioDailyFromStmt,
+            to: this.queryPortfolioDailyToStmt,
+            range: this.queryPortfolioDailyRangeStmt,
+          }
+        : {
+            all: this.queryPortfolioStmt,
+            from: this.queryPortfolioFromStmt,
+            to: this.queryPortfolioToStmt,
+            range: this.queryPortfolioRangeStmt,
+          };
+    let rows: Row[];
+    if (fromMs != null && toMs != null) {
+      rows = stmts.range.all(w, fromMs, toMs) as Row[];
+    } else if (fromMs != null) {
+      rows = stmts.from.all(w, fromMs) as Row[];
+    } else if (toMs != null) {
+      rows = stmts.to.all(w, toMs) as Row[];
+    } else {
+      rows = stmts.all.all(w) as Row[];
+    }
+    return rows.map((r) => ({
+      timestamp: r.timestamp,
+      totalDebt: r.total_debt,
+      totalAssets: r.total_assets,
+      netWorth: r.net_worth,
+    }));
   }
 
   appendInterestSnapshot(
@@ -263,7 +389,8 @@ export class RateHistoryDb {
     const cutoff = Date.now() - maxAgeMs;
     const result = this.pruneStmt.run(cutoff);
     const interestResult = this.pruneInterestStmt.run(cutoff);
-    return result.changes + interestResult.changes;
+    const portfolioResult = this.prunePortfolioStmt.run(cutoff);
+    return result.changes + interestResult.changes + portfolioResult.changes;
   }
 
   close(): void {

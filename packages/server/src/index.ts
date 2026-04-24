@@ -49,6 +49,13 @@ const interestHistoryQuerySchema = z.object({
   to: z.coerce.number().int().optional(),
 });
 
+const portfolioHistoryQuerySchema = z.object({
+  wallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  from: z.coerce.number().int().optional(),
+  to: z.coerce.number().int().optional(),
+  bucket: z.enum(['raw', 'day']).optional(),
+});
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_ENV_PATH = join(__dirname, '..', '..', '..', '.env');
 
@@ -272,6 +279,17 @@ app.get('/api/interest/history', (req, res) => {
   const { wallet, positionId, kind, from, to } = parsed.data;
   const rows = rateHistoryDb.queryInterestSnapshots(wallet, positionId, kind, from, to, 'day');
   res.json({ snapshots: computeInterestDeltas(rows) });
+});
+
+app.get('/api/portfolio/history', (req, res) => {
+  const parsed = portfolioHistoryQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid query parameters' });
+    return;
+  }
+  const { wallet, from, to, bucket } = parsed.data;
+  const samples = rateHistoryDb.queryPortfolioSnapshots(wallet, from, to, bucket ?? 'raw');
+  res.json({ samples });
 });
 
 app.get('/api/health', (_req, res) => {

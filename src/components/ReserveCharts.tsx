@@ -19,6 +19,8 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
+import { Stat } from './Stat';
+import { fmtUsd } from './chartFormat';
 import type { InterestSnapshot } from '../api/aaveMonitor';
 
 export type BorrowRateSample = {
@@ -551,15 +553,6 @@ const INTEREST_WINDOWS: Array<{ value: InterestHistoryWindow; label: string; dur
     { value: '180d', label: '6m', durationMs: 180 * 24 * 60 * 60 * 1000 },
   ];
 
-function fmtUsd(value: number): string {
-  const abs = Math.abs(value);
-  const digits = abs >= 100 ? 0 : abs >= 1 ? 2 : 4;
-  return `${value < 0 ? '-' : ''}$${abs.toLocaleString(undefined, {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  })}`;
-}
-
 export function InterestAccrualHistoryCard({
   snapshots,
   kind,
@@ -738,14 +731,5 @@ export function InterestAccrualHistoryCard({
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border border-border bg-accent px-3 py-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-semibold tracking-tight">{value}</p>
-    </div>
   );
 }

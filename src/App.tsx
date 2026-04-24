@@ -13,9 +13,11 @@ import {
 import {
   fetchBorrowRateHistory,
   fetchInterestHistory,
+  fetchPortfolioHistory,
   fetchReserveTelemetry,
   fetchWalletAssetBalances,
   type InterestSnapshot,
+  type PortfolioSnapshot,
 } from './api/aaveMonitor';
 import { readBorrowRateHistory, buildBorrowRateHistoryKey } from './lib/borrowRateHistory';
 import {
@@ -29,6 +31,7 @@ import { type ToastMessage } from './components/ui/toast-context';
 import { Card, CardContent } from './components/ui/card';
 import { WalletSearchCard } from './components/dashboard/WalletSearchCard';
 import { PortfolioSummaryCard } from './components/dashboard/SummaryCards';
+import { PortfolioHistoryCard } from './components/PortfolioHistoryCard';
 import {
   type LoanRow,
   LoanPositionsTable,
@@ -77,6 +80,7 @@ export default function App() {
     Record<string, InterestSnapshot[]>
   >({});
   const [vaultRateHistory, setVaultRateHistory] = useState<BorrowRateSample[]>([]);
+  const [portfolioHistory, setPortfolioHistory] = useState<PortfolioSnapshot[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const hasAutoFetchedInitialWallet = useRef(false);
@@ -205,6 +209,22 @@ export default function App() {
       window.clearInterval(timerId);
     };
   }, []);
+
+  useEffect(() => {
+    const resolvedWallet = result?.wallet;
+    if (!resolvedWallet) {
+      setPortfolioHistory([]); // eslint-disable-line react-hooks/set-state-in-effect
+      return;
+    }
+    let cancelled = false;
+    void fetchPortfolioHistory(resolvedWallet, undefined, undefined, 'day').then((samples) => {
+      if (cancelled) return;
+      setPortfolioHistory(samples);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [result?.wallet, result?.lastUpdated]);
 
   useEffect(() => {
     if (!selectedLoan || selectedLoan.borrowed.length === 0) {
@@ -370,6 +390,8 @@ export default function App() {
               {hasAnyPositions ? (
                 <>
                   {portfolio ? <PortfolioSummaryCard portfolio={portfolio} /> : null}
+
+                  <PortfolioHistoryCard samples={portfolioHistory} currentTimeMs={now} />
 
                   <LoanPositionsTable
                     rows={loanRows}

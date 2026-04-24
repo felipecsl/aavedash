@@ -151,3 +151,62 @@ test('appendSample without utilization stores null', () => {
   assert.equal(samples[0].utilizationRate, null);
   db.close();
 });
+
+test('appendPortfolioSnapshot + queryPortfolioSnapshots round-trip', () => {
+  const db = createDb();
+  db.appendPortfolioSnapshot('0xABC', 1000, 50_000, 120_000, 70_000);
+  db.appendPortfolioSnapshot('0xabc', 2000, 55_000, 125_000, 70_000);
+
+  const samples = db.queryPortfolioSnapshots('0xAbC');
+  assert.equal(samples.length, 2);
+  assert.equal(samples[0].timestamp, 1000);
+  assert.equal(samples[0].totalDebt, 50_000);
+  assert.equal(samples[0].totalAssets, 120_000);
+  assert.equal(samples[0].netWorth, 70_000);
+  assert.equal(samples[1].timestamp, 2000);
+  db.close();
+});
+
+test('queryPortfolioSnapshots day bucket returns one row per UTC day', () => {
+  const db = createDb();
+  const oneDay = 86_400_000;
+  // Two samples on day 0, one on day 1, one on day 2.
+  db.appendPortfolioSnapshot('0xabc', 1_000, 10, 100, 90);
+  db.appendPortfolioSnapshot('0xabc', 2_000, 20, 110, 90);
+  db.appendPortfolioSnapshot('0xabc', oneDay + 1_000, 30, 120, 90);
+  db.appendPortfolioSnapshot('0xabc', 2 * oneDay + 1_000, 40, 130, 90);
+
+  const daily = db.queryPortfolioSnapshots('0xabc', undefined, undefined, 'day');
+  assert.equal(daily.length, 3);
+  // Latest timestamp on day 0 is 2_000 with totalDebt=20.
+  assert.equal(daily[0].timestamp, 2_000);
+  assert.equal(daily[0].totalDebt, 20);
+  db.close();
+});
+
+test('queryPortfolioSnapshots filters by range', () => {
+  const db = createDb();
+  db.appendPortfolioSnapshot('0xabc', 1000, 10, 100, 90);
+  db.appendPortfolioSnapshot('0xabc', 2000, 20, 110, 90);
+  db.appendPortfolioSnapshot('0xabc', 3000, 30, 120, 90);
+
+  const samples = db.queryPortfolioSnapshots('0xabc', 1500, 2500);
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0].timestamp, 2000);
+  db.close();
+});
+
+test('prune removes portfolio snapshots older than maxAge', () => {
+  const db = createDb();
+  const now = Date.now();
+  const oneDay = 24 * 60 * 60 * 1000;
+  db.appendPortfolioSnapshot('0xabc', now - 10 * oneDay, 10, 100, 90);
+  db.appendPortfolioSnapshot('0xabc', now - 1 * oneDay, 20, 110, 90);
+
+  const deleted = db.prune(7 * oneDay);
+  assert.equal(deleted, 1);
+
+  const remaining = db.queryPortfolioSnapshots('0xabc');
+  assert.equal(remaining.length, 1);
+  db.close();
+});

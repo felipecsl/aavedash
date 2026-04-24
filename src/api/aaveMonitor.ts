@@ -51,6 +51,30 @@ export async function fetchInterestHistory(
   return data.snapshots;
 }
 
+export type PortfolioSnapshot = {
+  timestamp: number;
+  totalDebt: number;
+  totalAssets: number;
+  netWorth: number;
+};
+
+export async function fetchPortfolioHistory(
+  wallet: string,
+  fromMs?: number,
+  toMs?: number,
+  bucket: 'raw' | 'day' = 'raw',
+): Promise<PortfolioSnapshot[]> {
+  const params = new URLSearchParams({ wallet, bucket });
+  if (fromMs != null) params.set('from', String(fromMs));
+  if (toMs != null) params.set('to', String(toMs));
+
+  const res = await fetch(`/api/portfolio/history?${params.toString()}`);
+  if (!res.ok) return [];
+
+  const data = (await res.json()) as { samples: PortfolioSnapshot[] };
+  return data.samples;
+}
+
 export async function fetchWalletAssetBalances(
   wallet: string,
   assets: AssetPosition[],
