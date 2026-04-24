@@ -193,6 +193,12 @@ export class Monitor {
         this.utilizationStates.delete(utilKey);
       }
     }
+    for (const vaultKey of Array.from(this.vaultPositions.keys())) {
+      const walletAddr = vaultKey.split('-')[0];
+      if (!enabledAddresses.has(walletAddr)) {
+        this.vaultPositions.delete(vaultKey);
+      }
+    }
 
     if (enabledWallets.length === 0) {
       this.lastPollAt = Date.now();
