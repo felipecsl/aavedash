@@ -104,7 +104,9 @@ This is a single-page React 19 + TypeScript + Vite app with a small Express/Type
 
 Frontend structure:
 
-- `src/App.tsx` coordinates wallet loading, polling/refresh timers, selection state, and server-backed chart/history queries
+- `src/App.tsx` is now mostly a composition layer that wires dashboard sections, toasts, and the selected-position view together
+- `src/hooks/usePortfolioMonitor.ts` owns wallet loading, auto-refresh timers, portfolio history, and loan/vault selection state
+- `src/hooks/usePositionDetailsData.ts` owns server-backed detail queries for the selected loan or vault (borrow rate history, reserve telemetry, interest history)
 - `src/components/dashboard/*` renders wallet search, summary cards, loan/vault tables, and loan detail panels
 - `src/components/ServerSettings.tsx` owns the alert/watchdog/utilization settings drawer and `/api/config` integration
 - `src/api/aaveMonitor.ts` contains frontend API calls for server-backed data such as reserve telemetry, rate history, and portfolio history
