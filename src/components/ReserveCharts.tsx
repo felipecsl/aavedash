@@ -579,11 +579,15 @@ export function InterestAccrualHistoryCard({
     if (filteredSnapshots.length === 0) {
       return { data: [], totalDelta: 0, avgDelta: 0, maxDelta: 0, endCumulative: 0 };
     }
+    const normalizeInterestUsd = kind === 'loan' ? Math.abs : (value: number) => value;
     // Recompute deltas within the filtered window (first row is baseline, delta=0).
     const points = filteredSnapshots.map((s, i) => ({
       timestamp: s.timestamp,
-      deltaUsd: i === 0 ? 0 : s.cumulativeUsd - (filteredSnapshots[i - 1]?.cumulativeUsd ?? 0),
-      cumulativeUsd: s.cumulativeUsd,
+      deltaUsd:
+        i === 0
+          ? 0
+          : normalizeInterestUsd(s.cumulativeUsd - (filteredSnapshots[i - 1]?.cumulativeUsd ?? 0)),
+      cumulativeUsd: normalizeInterestUsd(s.cumulativeUsd),
     }));
     const deltasAfterFirst = points.slice(1).map((p) => p.deltaUsd);
     const total = deltasAfterFirst.reduce((sum, v) => sum + v, 0);
@@ -591,7 +595,7 @@ export function InterestAccrualHistoryCard({
     const max = deltasAfterFirst.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
     const end = points[points.length - 1]?.cumulativeUsd ?? 0;
     return { data: points, totalDelta: total, avgDelta: avg, maxDelta: max, endCumulative: end };
-  }, [filteredSnapshots]);
+  }, [filteredSnapshots, kind]);
 
   const xTickFormatter = useMemo(() => {
     return (v: number) => new Date(v).toLocaleDateString([], { month: 'short', day: 'numeric' });
