@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { UtilizationConfig } from '@aave-monitor/core';
+import type { BorrowRateConfig } from '@aave-monitor/core';
 import type { AlertConfig, WatchdogConfig } from './storage.js';
 
 const partialWatchdogConfigSchema = z
@@ -57,19 +57,18 @@ export const partialAlertConfigSchema = z
       }),
     ),
     watchdog: partialWatchdogConfigSchema,
-    utilization: z
+    borrowRate: z
       .object({
         enabled: z.boolean(),
-        defaultThreshold: z.number().min(0).max(1),
         cooldownMs: z.number().positive(),
       })
       .partial(),
   })
   .partial();
 
-export type ConfigUpdate = Partial<Omit<AlertConfig, 'watchdog' | 'utilization'>> & {
+export type ConfigUpdate = Partial<Omit<AlertConfig, 'watchdog' | 'borrowRate'>> & {
   watchdog?: Partial<WatchdogConfig>;
-  utilization?: Partial<UtilizationConfig>;
+  borrowRate?: Partial<BorrowRateConfig>;
 };
 
 export function parseConfigBody(body: unknown): { data: ConfigUpdate } | { error: string } {

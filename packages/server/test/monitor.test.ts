@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Monitor, type UtilizationAlertState } from '../src/monitor.js';
+import { Monitor, type BorrowRateAlertState } from '../src/monitor.js';
 import { logger } from '../src/logger.js';
 import type { AlertConfig } from '../src/storage.js';
 import type { TelegramClient } from '../src/telegram.js';
@@ -20,7 +20,7 @@ type MonitorInternals = {
       lastNotifiedAt: number;
     }
   >;
-  utilizationStates: Map<string, UtilizationAlertState>;
+  borrowRateStates: Map<string, BorrowRateAlertState>;
 };
 
 function getMonitorInternals(monitor: Monitor): MonitorInternals {
@@ -77,9 +77,8 @@ function createConfig(): AlertConfig {
       morphoRescueContract: '',
       maxGasGwei: 50,
     },
-    utilization: {
+    borrowRate: {
       enabled: false,
-      defaultThreshold: 0.9,
       cooldownMs: 30 * 60 * 1000,
     },
   };
@@ -560,9 +559,9 @@ test('monitor logs normalize mixed-case symbols and reuse per-loan usdPrice valu
   }
 });
 
-// --- Utilization alert tests ---
+// --- Borrow rate alert tests ---
 
-function createMorphoPayloadWithUtilization(utilization: number) {
+function createMorphoPayloadWithBorrowApy(borrowApy: number) {
   return {
     data: {
       userByAddress: {
@@ -570,7 +569,7 @@ function createMorphoPayloadWithUtilization(utilization: number) {
         marketPositions: [
           {
             market: {
-              uniqueKey: 'morpho-util-1',
+              uniqueKey: 'morpho-rate-1',
               loanAsset: {
                 symbol: 'USDC',
                 address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
@@ -587,8 +586,8 @@ function createMorphoPayloadWithUtilization(utilization: number) {
               irmAddress: '0x0000000000000000000000000000000000000002',
               lltv: '800000000000000000',
               state: {
-                utilization,
-                borrowApy: 0,
+                utilization: 0.5,
+                borrowApy,
                 supplyApy: 0,
               },
             },
@@ -604,19 +603,18 @@ function createMorphoPayloadWithUtilization(utilization: number) {
   };
 }
 
-function createUtilizationConfig(overrides: Partial<AlertConfig['utilization']> = {}): AlertConfig {
+function createBorrowRateConfig(overrides: Partial<AlertConfig['borrowRate']> = {}): AlertConfig {
   return {
     ...createConfig(),
-    utilization: {
+    borrowRate: {
       enabled: true,
-      defaultThreshold: 0.9,
       cooldownMs: 30 * 60 * 1000,
       ...overrides,
     },
   };
 }
 
-function mockFetchForMorphoUtilization(utilization: number) {
+function mockFetchForMorphoBorrowApy(borrowApy: number) {
   return (async (url: string | URL | Request, init?: RequestInit) => {
     const href = String(url);
     if (href.includes('coingecko.com/api/v3/simple/price')) {
@@ -632,7 +630,7 @@ function mockFetchForMorphoUtilization(utilization: number) {
       );
     }
     if (href.includes('api.morpho.org/graphql')) {
-      return new Response(JSON.stringify(createMorphoPayloadWithUtilization(utilization)), {
+      return new Response(JSON.stringify(createMorphoPayloadWithBorrowApy(borrowApy)), {
         status: 200,
       });
     }
@@ -647,29 +645,29 @@ function mockFetchForMorphoUtilization(utilization: number) {
   }) as typeof fetch;
 }
 
-function getUtilizationStates(monitor: Monitor): Map<string, UtilizationAlertState> {
-  return getMonitorInternals(monitor).utilizationStates;
+function getBorrowRateStates(monitor: Monitor): Map<string, BorrowRateAlertState> {
+  return getMonitorInternals(monitor).borrowRateStates;
 }
 
-test('utilization alert: first observation above threshold with chat on sends alert', async () => {
+test('borrow rate alert: first observation above threshold with chat on sends alert', async () => {
   const sentMessages: Array<{ chatId: string; text: string }> = [];
   const telegram = createTelegramStub(sentMessages);
 
-  const config = createUtilizationConfig();
+  const config = createBorrowRateConfig();
   const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   try {
-    globalThis.fetch = mockFetchForMorphoUtilization(0.95);
+    globalThis.fetch = mockFetchForMorphoBorrowApy(0.06);
 
     await pollMonitor(monitor, true);
 
     assert.equal(sentMessages.length, 1);
-    assert.match(sentMessages[0]!.text, /HIGH UTILIZATION/);
-    assert.match(sentMessages[0]!.text, /95\.0%/);
+    assert.match(sentMessages[0]!.text, /HIGH BORROW RATE/);
+    assert.match(sentMessages[0]!.text, /6\.00%/);
 
-    const states = getUtilizationStates(monitor);
+    const states = getBorrowRateStates(monitor);
     assert.equal(states.size, 1);
     const state = Array.from(states.values())[0]!;
     assert.equal(state.alerted, true);
@@ -679,21 +677,21 @@ test('utilization alert: first observation above threshold with chat on sends al
   }
 });
 
-test('utilization alert: first observation above threshold with chat off does not mark as alerted', async () => {
+test('borrow rate alert: first observation above threshold with chat off does not mark as alerted', async () => {
   const telegram = createTelegramStub();
 
-  const config = createUtilizationConfig();
+  const config = createBorrowRateConfig();
   config.telegram.enabled = false;
   const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   try {
-    globalThis.fetch = mockFetchForMorphoUtilization(0.95);
+    globalThis.fetch = mockFetchForMorphoBorrowApy(0.06);
 
     await pollMonitor(monitor, true);
 
-    const states = getUtilizationStates(monitor);
+    const states = getBorrowRateStates(monitor);
     assert.equal(states.size, 1);
     const state = Array.from(states.values())[0]!;
     assert.equal(state.alerted, false);
@@ -703,62 +701,59 @@ test('utilization alert: first observation above threshold with chat off does no
   }
 });
 
-test('utilization alert: below→above transition sends high alert, above→below sends normalized', async () => {
+test('borrow rate alert: below→above transition sends high alert, above→below sends normalized', async () => {
   const sentMessages: Array<{ chatId: string; text: string }> = [];
   const telegram = createTelegramStub(sentMessages);
 
-  const config = createUtilizationConfig({ cooldownMs: 0 });
+  const config = createBorrowRateConfig({ cooldownMs: 0 });
   const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   try {
-    // First poll: below threshold (80%)
-    globalThis.fetch = mockFetchForMorphoUtilization(0.8);
+    // First poll: below threshold (3%)
+    globalThis.fetch = mockFetchForMorphoBorrowApy(0.03);
     await pollMonitor(monitor, true);
     assert.equal(sentMessages.length, 0);
 
-    // Second poll: above threshold (95%) → should alert
-    globalThis.fetch = mockFetchForMorphoUtilization(0.95);
+    // Second poll: above threshold (6%) → should alert
+    globalThis.fetch = mockFetchForMorphoBorrowApy(0.06);
     await pollMonitor(monitor, true);
     assert.equal(sentMessages.length, 1);
-    assert.match(sentMessages[0]!.text, /HIGH UTILIZATION/);
+    assert.match(sentMessages[0]!.text, /HIGH BORROW RATE/);
 
-    // Third poll: back below (85%) → should send normalized
-    globalThis.fetch = mockFetchForMorphoUtilization(0.85);
+    // Third poll: back below (4%) → should send normalized
+    globalThis.fetch = mockFetchForMorphoBorrowApy(0.04);
     await pollMonitor(monitor, true);
     assert.equal(sentMessages.length, 2);
-    assert.match(sentMessages[1]!.text, /UTILIZATION NORMALIZED/);
+    assert.match(sentMessages[1]!.text, /BORROW RATE NORMALIZED/);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test('utilization alert: below→above with cooldown active defers alert to next eligible poll', async () => {
+test('borrow rate alert: below→above with cooldown active defers alert to next eligible poll', async () => {
   const sentMessages: Array<{ chatId: string; text: string }> = [];
   const telegram = createTelegramStub(sentMessages);
 
-  // Use a very long cooldown so the second poll is still within cooldown
-  const config = createUtilizationConfig({ cooldownMs: 999_999_999 });
+  const config = createBorrowRateConfig({ cooldownMs: 999_999_999 });
   const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   try {
-    // First poll at 80%: below threshold, initializes state with lastNotifiedAt=0
-    globalThis.fetch = mockFetchForMorphoUtilization(0.8);
+    // First poll at 3%: below threshold, initializes state with lastNotifiedAt=0
+    globalThis.fetch = mockFetchForMorphoBorrowApy(0.03);
     await pollMonitor(monitor, true);
 
-    // Set lastNotifiedAt to now to simulate a recent notification
-    const states = getUtilizationStates(monitor);
+    const states = getBorrowRateStates(monitor);
     const state = Array.from(states.values())[0]!;
     state.lastNotifiedAt = Date.now();
 
-    // Second poll at 95%: above threshold but cooldown is active
-    globalThis.fetch = mockFetchForMorphoUtilization(0.95);
+    // Second poll at 6%: above threshold but cooldown is active
+    globalThis.fetch = mockFetchForMorphoBorrowApy(0.06);
     await pollMonitor(monitor, true);
 
-    // No alert sent due to cooldown — and alerted is still false
     assert.equal(sentMessages.length, 0);
     assert.equal(state.alerted, false);
   } finally {
@@ -766,22 +761,21 @@ test('utilization alert: below→above with cooldown active defers alert to next
   }
 });
 
-test('utilization alert: wallet disable cleans up utilization states', async () => {
+test('borrow rate alert: wallet disable cleans up borrow rate states', async () => {
   const telegram = createTelegramStub();
 
-  const config = createUtilizationConfig();
+  const config = createBorrowRateConfig();
   const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
   try {
-    globalThis.fetch = mockFetchForMorphoUtilization(0.8);
+    globalThis.fetch = mockFetchForMorphoBorrowApy(0.03);
     await pollMonitor(monitor, true);
 
-    const states = getUtilizationStates(monitor);
+    const states = getBorrowRateStates(monitor);
     assert.equal(states.size, 1);
 
-    // Disable the wallet
     config.wallets[0]!.enabled = false;
     await pollMonitor(monitor, true);
 

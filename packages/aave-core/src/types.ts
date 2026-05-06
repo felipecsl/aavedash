@@ -200,10 +200,8 @@ export type InterestRateCurvePoint = {
   variableBorrowRate: number;
 };
 
-export type UtilizationConfig = {
+export type BorrowRateConfig = {
   enabled: boolean;
-  /** Default trigger threshold (0–1). Used when on-chain optimalUsageRatio unavailable. */
-  defaultThreshold: number;
-  /** Cooldown between alerts for same asset (ms). */
+  /** Cooldown between alerts for the same loan (ms). */
   cooldownMs: number;
 };

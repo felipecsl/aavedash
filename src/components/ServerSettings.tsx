@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, Send, Settings, Trash2, X } from 'lucide-react';
 import {
+  BORROW_RATE_ALERT_THRESHOLD,
+  DEFAULT_BORROW_RATE_CONFIG,
   DEFAULT_POLLING_CONFIG,
-  DEFAULT_UTILIZATION_CONFIG,
   DEFAULT_WATCHDOG_CONFIG,
   DEFAULT_ZONES,
+  type BorrowRateConfig,
   type PollingConfig,
-  type UtilizationConfig,
   type WatchdogConfig,
   type Zone,
 } from '@aave-monitor/core';
@@ -36,7 +37,7 @@ type AlertConfig = {
   polling: PollingConfig;
   zones: ZoneConfig[];
   watchdog: WatchdogConfig;
-  utilization: UtilizationConfig;
+  borrowRate: BorrowRateConfig;
 };
 
 const DEFAULT_ZONE_CONFIG: ZoneConfig[] = DEFAULT_ZONES.map(({ name, minHF, maxHF }) => ({
@@ -142,9 +143,9 @@ function normalizeConfig(config: Partial<AlertConfig> | null | undefined): Alert
       ...DEFAULT_WATCHDOG_CONFIG,
       ...(config?.watchdog ?? {}),
     },
-    utilization: {
-      ...DEFAULT_UTILIZATION_CONFIG,
-      ...(config?.utilization ?? {}),
+    borrowRate: {
+      ...DEFAULT_BORROW_RATE_CONFIG,
+      ...(config?.borrowRate ?? {}),
     },
   };
 }
@@ -176,7 +177,7 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
   const [showZones, setShowZones] = useState(false);
   const [showPolling, setShowPolling] = useState(false);
   const [showWatchdog, setShowWatchdog] = useState(false);
-  const [showUtilization, setShowUtilization] = useState(false);
+  const [showBorrowRate, setShowBorrowRate] = useState(false);
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
   const [newWalletAddress, setNewWalletAddress] = useState('');
   const [newWalletLabel, setNewWalletLabel] = useState('');
@@ -288,14 +289,14 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
     );
   };
 
-  const updateUtilization = (
-    patch: Partial<AlertConfig['utilization']>,
+  const updateBorrowRate = (
+    patch: Partial<AlertConfig['borrowRate']>,
     options?: { persist?: boolean },
   ) => {
     applyConfigUpdate(
       (current) => ({
         ...current,
-        utilization: { ...current.utilization, ...patch },
+        borrowRate: { ...current.borrowRate, ...patch },
       }),
       options,
     );
@@ -691,48 +692,32 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 text-left text-sm font-semibold"
-                  onClick={() => setShowUtilization(!showUtilization)}
+                  onClick={() => setShowBorrowRate(!showBorrowRate)}
                 >
-                  {showUtilization ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  Utilization Alerts
+                  {showBorrowRate ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  Borrow Rate Alerts
                 </button>
-                {showUtilization ? (
+                {showBorrowRate ? (
                   <div className="mt-3 grid gap-3">
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
-                        checked={config.utilization.enabled}
+                        checked={config.borrowRate.enabled}
                         onChange={() =>
-                          updateUtilization(
-                            { enabled: !config.utilization.enabled },
+                          updateBorrowRate(
+                            { enabled: !config.borrowRate.enabled },
                             { persist: true },
                           )
                         }
                         className="accent-primary"
                       />
-                      Enable utilization alerts
+                      Enable borrow rate alerts
                     </label>
 
-                    <label className="grid gap-1.5 text-sm">
-                      <span className="text-muted-foreground">Default threshold (%)</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={Math.round(config.utilization.defaultThreshold * 100)}
-                        onChange={(e) =>
-                          updateUtilization({ defaultThreshold: Number(e.target.value) / 100 })
-                        }
-                        onBlur={(e) =>
-                          updateUtilization(
-                            { defaultThreshold: Number(e.target.value) / 100 },
-                            { persist: true },
-                          )
-                        }
-                        className="w-[100px]"
-                      />
-                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Alerts when a loan&apos;s weighted borrow rate crosses{' '}
+                      <b>{(BORROW_RATE_ALERT_THRESHOLD * 100).toFixed(2)}%</b>.
+                    </p>
 
                     <label className="grid gap-1.5 text-sm">
                       <span className="text-muted-foreground">Alert cooldown (minutes)</span>
@@ -740,12 +725,12 @@ function ServerSettingsPanel({ onClose }: { onClose: () => void }) {
                         type="number"
                         min="1"
                         step="1"
-                        value={Math.round(config.utilization.cooldownMs / 60_000)}
+                        value={Math.round(config.borrowRate.cooldownMs / 60_000)}
                         onChange={(e) =>
-                          updateUtilization({ cooldownMs: Number(e.target.value) * 60_000 })
+                          updateBorrowRate({ cooldownMs: Number(e.target.value) * 60_000 })
                         }
                         onBlur={(e) =>
-                          updateUtilization(
+                          updateBorrowRate(
                             { cooldownMs: Number(e.target.value) * 60_000 },
                             { persist: true },
                           )

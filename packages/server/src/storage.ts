@@ -1,12 +1,12 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
+  DEFAULT_BORROW_RATE_CONFIG,
   DEFAULT_POLLING_CONFIG,
-  DEFAULT_UTILIZATION_CONFIG,
   DEFAULT_WATCHDOG_CONFIG,
   DEFAULT_ZONES,
+  type BorrowRateConfig,
   type PollingConfig,
-  type UtilizationConfig,
   type WatchdogConfig as CoreWatchdogConfig,
   type ZoneName,
 } from '@aave-monitor/core';
@@ -34,7 +34,7 @@ export type AlertConfig = {
   polling: PollingConfig;
   zones: ZoneConfig[];
   watchdog: WatchdogConfig;
-  utilization: UtilizationConfig;
+  borrowRate: BorrowRateConfig;
 };
 
 const DEFAULT_CONFIG: AlertConfig = {
@@ -53,7 +53,7 @@ const DEFAULT_CONFIG: AlertConfig = {
     { name: 'critical', minHF: 0, maxHF: 1.15 },
   ],
   watchdog: { ...DEFAULT_WATCHDOG_CONFIG },
-  utilization: { ...DEFAULT_UTILIZATION_CONFIG },
+  borrowRate: { ...DEFAULT_BORROW_RATE_CONFIG },
 };
 
 function parseEnvFloat(name: string): number | undefined {
@@ -160,7 +160,7 @@ export class ConfigStorage {
       if (config.zones) config.zones = normalizeZones(config.zones);
       // Merge with defaults to support older/partial persisted configs.
       config.watchdog = mergeWatchdogConfig(config.watchdog);
-      config.utilization = { ...DEFAULT_UTILIZATION_CONFIG, ...(config.utilization ?? {}) };
+      config.borrowRate = { ...DEFAULT_BORROW_RATE_CONFIG, ...(config.borrowRate ?? {}) };
       applyWatchdogEnvOverrides(config.watchdog);
       return config;
     } catch {
@@ -183,9 +183,9 @@ export class ConfigStorage {
   }
 
   update(
-    partial: Partial<Omit<AlertConfig, 'watchdog' | 'utilization'>> & {
+    partial: Partial<Omit<AlertConfig, 'watchdog' | 'borrowRate'>> & {
       watchdog?: Partial<WatchdogConfig>;
-      utilization?: Partial<UtilizationConfig>;
+      borrowRate?: Partial<BorrowRateConfig>;
     },
   ): AlertConfig {
     if (partial.wallets !== undefined) this.config.wallets = partial.wallets;
@@ -198,10 +198,10 @@ export class ConfigStorage {
         ...partial.watchdog,
       });
     }
-    if (partial.utilization !== undefined) {
-      this.config.utilization = {
-        ...this.config.utilization,
-        ...partial.utilization,
+    if (partial.borrowRate !== undefined) {
+      this.config.borrowRate = {
+        ...this.config.borrowRate,
+        ...partial.borrowRate,
       };
     }
     this.save();
