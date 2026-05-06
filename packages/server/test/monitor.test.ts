@@ -31,6 +31,10 @@ function stubWatchdogEvaluate(monitor: Monitor) {
   getMonitorInternals(monitor).watchdog.evaluate = async () => {};
 }
 
+const stubTelemetryFetcher = async () => {
+  throw new Error('telemetry stubbed in tests');
+};
+
 function createTelegramStub(
   sentMessages?: Array<{ chatId: string; text: string }>,
 ): TelegramClient {
@@ -163,7 +167,16 @@ test('groups multiple loan alerts for the same wallet into one telegram message'
   const sentMessages: Array<{ chatId: string; text: string }> = [];
   const telegram = createTelegramStub(sentMessages);
 
-  const monitor = new Monitor(telegram, createConfig, undefined, undefined, RPC_URL, undefined);
+  const monitor = new Monitor(
+    telegram,
+    createConfig,
+    undefined,
+    undefined,
+    RPC_URL,
+    undefined,
+    undefined,
+    stubTelemetryFetcher,
+  );
   stubWatchdogEvaluate(monitor);
 
   let phase: 'initial' | 'critical' = 'initial';
@@ -242,7 +255,16 @@ test('wallet reminder digest includes all non-safe loans when any loan is due', 
   const sentMessages: Array<{ chatId: string; text: string }> = [];
   const telegram = createTelegramStub(sentMessages);
 
-  const monitor = new Monitor(telegram, createConfig, undefined, undefined, RPC_URL, undefined);
+  const monitor = new Monitor(
+    telegram,
+    createConfig,
+    undefined,
+    undefined,
+    RPC_URL,
+    undefined,
+    undefined,
+    stubTelemetryFetcher,
+  );
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
@@ -328,7 +350,16 @@ test('wallet reminder digest includes all non-safe loans when any loan is due', 
 test('monitor state uses wallet debt-token balances to project rescue-adjusted HF', async () => {
   const telegram = createTelegramStub();
 
-  const monitor = new Monitor(telegram, createConfig, undefined, undefined, RPC_URL, undefined);
+  const monitor = new Monitor(
+    telegram,
+    createConfig,
+    undefined,
+    undefined,
+    RPC_URL,
+    undefined,
+    undefined,
+    stubTelemetryFetcher,
+  );
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
@@ -404,7 +435,16 @@ test('monitor state uses wallet debt-token balances to project rescue-adjusted H
 test('monitor logs normalize mixed-case symbols and reuse per-loan usdPrice values', async () => {
   const telegram = createTelegramStub();
 
-  const monitor = new Monitor(telegram, createConfig, undefined, undefined, RPC_URL, undefined);
+  const monitor = new Monitor(
+    telegram,
+    createConfig,
+    undefined,
+    undefined,
+    RPC_URL,
+    undefined,
+    undefined,
+    stubTelemetryFetcher,
+  );
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
@@ -654,7 +694,16 @@ test('borrow rate alert: first observation above threshold with chat on sends al
   const telegram = createTelegramStub(sentMessages);
 
   const config = createBorrowRateConfig();
-  const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
+  const monitor = new Monitor(
+    telegram,
+    () => config,
+    undefined,
+    undefined,
+    RPC_URL,
+    undefined,
+    undefined,
+    stubTelemetryFetcher,
+  );
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
@@ -682,7 +731,16 @@ test('borrow rate alert: first observation above threshold with chat off does no
 
   const config = createBorrowRateConfig();
   config.telegram.enabled = false;
-  const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
+  const monitor = new Monitor(
+    telegram,
+    () => config,
+    undefined,
+    undefined,
+    RPC_URL,
+    undefined,
+    undefined,
+    stubTelemetryFetcher,
+  );
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
@@ -706,7 +764,16 @@ test('borrow rate alert: below→above transition sends high alert, above→belo
   const telegram = createTelegramStub(sentMessages);
 
   const config = createBorrowRateConfig({ cooldownMs: 0 });
-  const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
+  const monitor = new Monitor(
+    telegram,
+    () => config,
+    undefined,
+    undefined,
+    RPC_URL,
+    undefined,
+    undefined,
+    stubTelemetryFetcher,
+  );
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
@@ -737,7 +804,16 @@ test('borrow rate alert: below→above with cooldown active defers alert to next
   const telegram = createTelegramStub(sentMessages);
 
   const config = createBorrowRateConfig({ cooldownMs: 999_999_999 });
-  const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
+  const monitor = new Monitor(
+    telegram,
+    () => config,
+    undefined,
+    undefined,
+    RPC_URL,
+    undefined,
+    undefined,
+    stubTelemetryFetcher,
+  );
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;
@@ -765,7 +841,16 @@ test('borrow rate alert: wallet disable cleans up borrow rate states', async () 
   const telegram = createTelegramStub();
 
   const config = createBorrowRateConfig();
-  const monitor = new Monitor(telegram, () => config, undefined, undefined, RPC_URL, undefined);
+  const monitor = new Monitor(
+    telegram,
+    () => config,
+    undefined,
+    undefined,
+    RPC_URL,
+    undefined,
+    undefined,
+    stubTelemetryFetcher,
+  );
   stubWatchdogEvaluate(monitor);
 
   const originalFetch = globalThis.fetch;

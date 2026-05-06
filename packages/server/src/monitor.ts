@@ -25,7 +25,13 @@ import type { TelegramClient } from './telegram.js';
 import { Watchdog, type WatchdogLogEntry } from './watchdog.js';
 import { logger } from './logger.js';
 import { computeRescueAdjustedHF } from './rescueMetrics.js';
-import { fetchReserveTelemetry } from './reserveTelemetry.js';
+import { fetchReserveTelemetry as defaultFetchReserveTelemetry } from './reserveTelemetry.js';
+
+export type ReserveTelemetryFetcher = (
+  marketName: string,
+  assetAddress: string,
+  rpcUrl: string,
+) => Promise<ReserveTelemetry>;
 import { type RateHistoryDb } from './rateHistoryDb.js';
 
 export type LoanAlertState = {
@@ -101,6 +107,7 @@ export class Monitor {
     private readonly rpcUrl: string,
     privateKey: string | undefined,
     private readonly rateHistoryDb?: RateHistoryDb,
+    private readonly fetchReserveTelemetry: ReserveTelemetryFetcher = defaultFetchReserveTelemetry,
   ) {
     this.watchdog = new Watchdog(
       telegram,
@@ -255,9 +262,8 @@ export class Monitor {
 
     // Fetch reserve telemetry for Aave loans (used for /status utilization display
     // and rate-history utilization samples). Deduplicate by (marketName, assetAddress).
-    // Gated on borrowRate.enabled to keep tests offline by default.
     const telemetryMap = new Map<string, ReserveTelemetry>();
-    if (config.borrowRate.enabled) {
+    {
       const telemetryKeys = new Map<string, { marketName: string; assetAddress: string }>();
       for (const loan of loans) {
         if (loan.marketName.startsWith('morpho_')) continue;
@@ -273,7 +279,7 @@ export class Monitor {
       }
       const results = await Promise.allSettled(
         Array.from(telemetryKeys.entries()).map(async ([key, { marketName, assetAddress }]) => {
-          const telemetry = await fetchReserveTelemetry(marketName, assetAddress, this.rpcUrl);
+          const telemetry = await this.fetchReserveTelemetry(marketName, assetAddress, this.rpcUrl);
           return { key, telemetry };
         }),
       );
