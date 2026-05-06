@@ -26,7 +26,7 @@ A React + Vite dashboard that auto-loads Aave loans, Morpho Blue market position
 - Support for multiple loans/borrowed assets plus supply-only vault deposits.
 - Top-level portfolio metrics roll up all detected positions:
   - Loan-risk metrics stay loan-only (average health factor, borrow power used, repay coverage)
-  - Asset/carry metrics include Morpho vault deposits (total assets, net worth, supply APY, net earnings, net APY)
+  - Asset/carry metrics include Morpho vault deposits (total assets, net worth, supply APY, net earnings, estimated daily net earnings, net APY)
   - Morpho Blue market collateral is treated as risk collateral only and does not earn the market supply APY
   - Hover or focus any top-level metric to see a one-sentence calculation note.
 - Fully paid-off / dust positions with effectively zero USD exposure are filtered out.

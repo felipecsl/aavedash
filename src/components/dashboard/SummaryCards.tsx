@@ -22,6 +22,7 @@ function getInitialHideTopLevelValues(): boolean {
 
 export function PortfolioSummaryCard({ portfolio }: { portfolio: PortfolioSummary }) {
   const [hideTopLevelValues, setHideTopLevelValues] = useState(getInitialHideTopLevelValues);
+  const dailyNetEarn = portfolio.totalNetEarn / 365;
 
   useEffect(() => {
     try {
@@ -127,6 +128,11 @@ export function PortfolioSummaryCard({ portfolio }: { portfolio: PortfolioSummar
             description="Net earnings are annual loan supply income plus vault income minus annual borrow cost."
             label="Net earnings"
             value={`${fmtUSD(portfolio.totalNetEarn, 0)}/yr`}
+          />
+          <PortfolioMetric
+            description="Net earnings per day are estimated by dividing annual net earnings by 365."
+            label="Net earnings per day"
+            value={`${fmtUSD(dailyNetEarn, 2)}/day`}
           />
           <PortfolioMetric
             description="Net borrow cost is the gross annual borrow interest cost across loan positions before supply or vault income offsets."

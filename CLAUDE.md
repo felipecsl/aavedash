@@ -89,7 +89,7 @@ Frontend notes:
 - `src/components/dashboard/SummaryCards.tsx` stores the top-level privacy toggle under `localStorage['aave-monitor:hide-top-level-values']` and uses it to blur `Total Debt` and `Total Assets`.
 - On page load, wallet resolution order is: query string (`wallet`, `address`, `walletAddress`) first, then saved local storage wallet.
 - Portfolio summary math is centralized in `computePortfolioSummary()` in `packages/aave-core/src/metrics.ts`.
-- The dashboard's `Total Assets`, `Net worth`, `Supply APY`, `Net earnings`, and `Net APY` include Morpho vault deposits; `HF`, `Borrow power used`, and `Repay coverage` remain loan-only.
+- The dashboard's `Total Assets`, `Net worth`, `Supply APY`, `Net earnings`, estimated daily net earnings, and `Net APY` include Morpho vault deposits; `HF`, `Borrow power used`, and `Repay coverage` remain loan-only.
 - Top-level portfolio metrics use hover/focus tooltips to explain their calculation in one sentence.
 - The loan positions table is sortable. It defaults to USD debt descending and supports sorting by market, collateral, borrowed asset, HF, rate, LTV, and liquidation price.
 - The loan positions table includes an `Accrued Int.` column (sortable) sourced from protocol position APIs when available (currently Morpho-only and API-dependent).
