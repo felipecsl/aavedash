@@ -15,15 +15,16 @@ export type {
   RawUserReserve,
   RawUserReserveWithMarket,
   ReserveTelemetry,
-  UtilizationConfig,
+  BorrowRateConfig,
   WatchdogConfig,
 } from './types.js';
 
 export {
   AAVE_MARKETS,
   COINGECKO_IDS_BY_SYMBOL,
+  BORROW_RATE_ALERT_THRESHOLD,
+  DEFAULT_BORROW_RATE_CONFIG,
   DEFAULT_POLLING_CONFIG,
-  DEFAULT_UTILIZATION_CONFIG,
   DEFAULT_WATCHDOG_CONFIG,
   ETHEREUM_ADDRESS_REGEX,
   STABLECOIN_CONTRACTS,

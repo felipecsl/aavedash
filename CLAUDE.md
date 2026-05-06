@@ -55,7 +55,8 @@ Backend server notes:
 - Watchdog user-facing docs live in `docs/watchdog-user-manual.md`.
 - Watchdog uses an atomic on-chain rescue path: it computes the required debt-token repay amount off-chain and submits a single `rescue(...)` transaction to the configured rescue contract, which repays the loan's borrowed asset (e.g. USDC/USDT) from the monitored wallet.
 - Watchdog is fully wired: monitor integration, `GET /api/watchdog/status` endpoint, `/watchdog` Telegram command, config via `GET/PUT /api/config`, and dashboard settings controls for watchdog fields.
-- `GET /api/config` and `PUT /api/config` round-trip both `watchdog` and `utilization` settings so dashboard/server alert config stays in sync.
+- `GET /api/config` and `PUT /api/config` round-trip both `watchdog` and `borrowRate` settings so dashboard/server alert config stays in sync.
+- Borrow-rate alerts fire when a loan's weighted borrow rate crosses the hardcoded `BORROW_RATE_ALERT_THRESHOLD` (4.5%). They replace the old market-utilization alert; only the alert was removed — telemetry, the dashboard "Utilization %" column, and the utilization curve chart all stay.
 - `zones[].maxHF` accepts JSON `null` on `PUT /api/config` and is normalized to `Infinity` (important because JSON serialization turns `Infinity` into `null`).
 - Legacy configs that omit one or more zones are hydrated back to the full default six-zone set by name, so runtime, `/api/config`, and the dashboard stay aligned.
 - Monitor runtime is driven by enabled wallets (not Telegram enablement), so watchdog polling can run without Telegram configured.
@@ -108,7 +109,7 @@ Frontend structure:
 - `src/hooks/usePortfolioMonitor.ts` owns wallet loading, auto-refresh timers, portfolio history, and loan/vault selection state
 - `src/hooks/usePositionDetailsData.ts` owns server-backed detail queries for the selected loan or vault (borrow rate history, reserve telemetry, interest history)
 - `src/components/dashboard/*` renders wallet search, summary cards, loan/vault tables, and loan detail panels
-- `src/components/ServerSettings.tsx` owns the alert/watchdog/utilization settings drawer and `/api/config` integration
+- `src/components/ServerSettings.tsx` owns the alert/watchdog/borrow-rate settings drawer and `/api/config` integration
 - `src/api/aaveMonitor.ts` contains frontend API calls for server-backed data such as reserve telemetry, rate history, and portfolio history
 - `packages/aave-core/src/*` owns shared protocol fetchers, position builders, and portfolio math used by both frontend and backend
 

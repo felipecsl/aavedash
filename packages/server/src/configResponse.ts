@@ -7,6 +7,6 @@ export function serializeConfig(config: AlertConfig) {
     polling: config.polling,
     zones: config.zones,
     watchdog: config.watchdog,
-    utilization: config.utilization,
+    borrowRate: config.borrowRate,
   };
 }

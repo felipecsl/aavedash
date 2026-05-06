@@ -6,6 +6,7 @@ import {
   type ReserveTelemetry,
   type Zone,
   type ZoneName,
+  BORROW_RATE_ALERT_THRESHOLD,
   classifyZone,
   isWorsening,
   isImproving,
@@ -24,7 +25,13 @@ import type { TelegramClient } from './telegram.js';
 import { Watchdog, type WatchdogLogEntry } from './watchdog.js';
 import { logger } from './logger.js';
 import { computeRescueAdjustedHF } from './rescueMetrics.js';
-import { fetchReserveTelemetry } from './reserveTelemetry.js';
+import { fetchReserveTelemetry as defaultFetchReserveTelemetry } from './reserveTelemetry.js';
+
+export type ReserveTelemetryFetcher = (
+  marketName: string,
+  assetAddress: string,
+  rpcUrl: string,
+) => Promise<ReserveTelemetry>;
 import { type RateHistoryDb } from './rateHistoryDb.js';
 
 export type LoanAlertState = {
@@ -47,26 +54,22 @@ export type LoanAlertState = {
   stuckSince: number | null;
 };
 
-export type UtilizationAlertState = {
+export type BorrowRateAlertState = {
   wallet: string;
   loanId: string;
   marketName: string;
-  assetAddress: string;
-  assetSymbol: string;
   /** Whether we have already sent an "exceeded" alert */
   alerted: boolean;
-  /** Timestamp of last utilization alert sent */
+  /** Timestamp of last borrow-rate alert sent */
   lastNotifiedAt: number;
-  /** Last observed utilization rate (0–1) */
-  lastUtilization: number;
-  /** The threshold that was used (from on-chain optimalUsageRatio or config default) */
-  threshold: number;
+  /** Last observed borrow rate (0–1) */
+  lastBorrowRate: number;
 };
 
 export type MonitorStatus = {
   running: boolean;
   states: LoanAlertState[];
-  utilizationStates: UtilizationAlertState[];
+  borrowRateStates: BorrowRateAlertState[];
   vaults: MorphoVaultPosition[];
   totalWalletBorrowedAssetUsd: number;
   lastPollAt: number | null;
@@ -75,13 +78,7 @@ export type MonitorStatus = {
 };
 
 type WalletNotification = {
-  kind:
-    | 'transition'
-    | 'recovery'
-    | 'all-clear'
-    | 'reminder'
-    | 'utilization-high'
-    | 'utilization-normalized';
+  kind: 'transition' | 'recovery' | 'all-clear' | 'reminder' | 'rate-high' | 'rate-normalized';
   message: string;
 };
 
@@ -92,7 +89,7 @@ type ReminderDigestEntry = {
 
 export class Monitor {
   private states = new Map<string, LoanAlertState>();
-  private utilizationStates = new Map<string, UtilizationAlertState>();
+  private borrowRateStates = new Map<string, BorrowRateAlertState>();
   private vaultPositions = new Map<string, MorphoVaultPosition>();
   private timerId: ReturnType<typeof setInterval> | null = null;
   private walletBorrowedAssetUsd = new Map<string, number>();
@@ -110,6 +107,7 @@ export class Monitor {
     private readonly rpcUrl: string,
     privateKey: string | undefined,
     private readonly rateHistoryDb?: RateHistoryDb,
+    private readonly fetchReserveTelemetry: ReserveTelemetryFetcher = defaultFetchReserveTelemetry,
   ) {
     this.watchdog = new Watchdog(
       telegram,
@@ -152,7 +150,7 @@ export class Monitor {
     return {
       running: this.running,
       states: Array.from(this.states.values()),
-      utilizationStates: Array.from(this.utilizationStates.values()),
+      borrowRateStates: Array.from(this.borrowRateStates.values()),
       vaults: Array.from(this.vaultPositions.values()),
       totalWalletBorrowedAssetUsd: Array.from(this.walletBorrowedAssetUsd.values()).reduce(
         (sum, value) => sum + value,
@@ -188,9 +186,9 @@ export class Monitor {
         this.walletBorrowedAssetUsd.delete(existingAddress);
       }
     }
-    for (const [utilKey, utilState] of Array.from(this.utilizationStates.entries())) {
-      if (!enabledAddresses.has(utilState.wallet.toLowerCase())) {
-        this.utilizationStates.delete(utilKey);
+    for (const [rateKey, rateState] of Array.from(this.borrowRateStates.entries())) {
+      if (!enabledAddresses.has(rateState.wallet.toLowerCase())) {
+        this.borrowRateStates.delete(rateKey);
       }
     }
     for (const vaultKey of Array.from(this.vaultPositions.keys())) {
@@ -262,10 +260,10 @@ export class Monitor {
       this.vaultPositions.set(vaultKey, vault);
     }
 
-    // Fetch reserve telemetry for Aave loans when utilization alerts are enabled.
-    // Deduplicate by (marketName, assetAddress) to avoid redundant RPC calls.
+    // Fetch reserve telemetry for Aave loans (used for /status utilization display
+    // and rate-history utilization samples). Deduplicate by (marketName, assetAddress).
     const telemetryMap = new Map<string, ReserveTelemetry>();
-    if (config.utilization.enabled) {
+    {
       const telemetryKeys = new Map<string, { marketName: string; assetAddress: string }>();
       for (const loan of loans) {
         if (loan.marketName.startsWith('morpho_')) continue;
@@ -281,7 +279,7 @@ export class Monitor {
       }
       const results = await Promise.allSettled(
         Array.from(telemetryKeys.entries()).map(async ([key, { marketName, assetAddress }]) => {
-          const telemetry = await fetchReserveTelemetry(marketName, assetAddress, this.rpcUrl);
+          const telemetry = await this.fetchReserveTelemetry(marketName, assetAddress, this.rpcUrl);
           return { key, telemetry };
         }),
       );
@@ -475,103 +473,59 @@ export class Monitor {
       }
     }
 
-    // Utilization alert pass — independent of HF zone transitions
-    const activeUtilKeys = new Set<string>();
-    if (config.utilization.enabled) {
+    // Borrow-rate alert pass — independent of HF zone transitions.
+    // Fires when a loan's weighted borrow rate crosses BORROW_RATE_ALERT_THRESHOLD.
+    const activeRateKeys = new Set<string>();
+    if (config.borrowRate.enabled) {
       for (const loan of loans) {
         const metrics = metricsCache.get(loan.id)!;
-        for (const borrowedAsset of loan.borrowed) {
-          const assetAddr = borrowedAsset.address.toLowerCase();
-          let currentUtilization: number | undefined;
-          let threshold: number;
+        const currentRate = metrics.rBorrow;
+        if (!Number.isFinite(currentRate)) continue;
 
-          if (loan.marketName.startsWith('morpho_')) {
-            currentUtilization = loan.utilizationRate;
-            threshold = config.utilization.defaultThreshold;
-          } else {
-            const telKey = `${loan.marketName}:${assetAddr}`;
-            const telemetry = telemetryMap.get(telKey);
-            if (telemetry) {
-              currentUtilization = telemetry.utilizationRate;
-              threshold =
-                telemetry.optimalUsageRatio > 0
-                  ? telemetry.optimalUsageRatio
-                  : config.utilization.defaultThreshold;
-            } else {
-              const utilKey = `${address}-${loan.id}-${assetAddr}`;
-              activeUtilKeys.add(utilKey);
-              continue;
-            }
-          }
+        const rateKey = `${address}-${loan.id}`;
+        activeRateKeys.add(rateKey);
+        const existingRate = this.borrowRateStates.get(rateKey);
+        const threshold = BORROW_RATE_ALERT_THRESHOLD;
 
-          if (currentUtilization == null) continue;
-
-          const utilKey = `${address}-${loan.id}-${assetAddr}`;
-          activeUtilKeys.add(utilKey);
-          const existingUtil = this.utilizationStates.get(utilKey);
-
-          if (!existingUtil) {
-            const isAbove = currentUtilization >= threshold;
-            const sent = isAbove && chatId;
-            this.utilizationStates.set(utilKey, {
-              wallet: address,
-              loanId: loan.id,
-              marketName: loan.marketName,
-              assetAddress: assetAddr,
-              assetSymbol: borrowedAsset.symbol,
-              alerted: sent ? true : false,
-              lastNotifiedAt: sent ? now : 0,
-              lastUtilization: currentUtilization,
-              threshold,
+        if (!existingRate) {
+          const isAbove = currentRate >= threshold;
+          const sent = isAbove && chatId;
+          this.borrowRateStates.set(rateKey, {
+            wallet: address,
+            loanId: loan.id,
+            marketName: loan.marketName,
+            alerted: sent ? true : false,
+            lastNotifiedAt: sent ? now : 0,
+            lastBorrowRate: currentRate,
+          });
+          if (sent) {
+            pendingNotifications.push({
+              kind: 'rate-high',
+              message: this.formatBorrowRateHigh(loan, currentRate, threshold, metrics),
             });
-            if (sent) {
-              pendingNotifications.push({
-                kind: 'utilization-high',
-                message: this.formatUtilizationHigh(
-                  loan,
-                  borrowedAsset,
-                  currentUtilization,
-                  threshold,
-                  metrics,
-                ),
-              });
-            }
-            continue;
           }
+          continue;
+        }
 
-          existingUtil.lastUtilization = currentUtilization;
-          existingUtil.threshold = threshold;
+        existingRate.lastBorrowRate = currentRate;
 
-          if (currentUtilization >= threshold && !existingUtil.alerted) {
-            if (chatId && now - existingUtil.lastNotifiedAt >= config.utilization.cooldownMs) {
-              existingUtil.alerted = true;
-              existingUtil.lastNotifiedAt = now;
-              pendingNotifications.push({
-                kind: 'utilization-high',
-                message: this.formatUtilizationHigh(
-                  loan,
-                  borrowedAsset,
-                  currentUtilization,
-                  threshold,
-                  metrics,
-                ),
-              });
-            }
-          } else if (currentUtilization < threshold && existingUtil.alerted) {
-            if (chatId && now - existingUtil.lastNotifiedAt >= config.utilization.cooldownMs) {
-              existingUtil.alerted = false;
-              existingUtil.lastNotifiedAt = now;
-              pendingNotifications.push({
-                kind: 'utilization-normalized',
-                message: this.formatUtilizationNormalized(
-                  loan,
-                  borrowedAsset,
-                  currentUtilization,
-                  threshold,
-                  metrics,
-                ),
-              });
-            }
+        if (currentRate >= threshold && !existingRate.alerted) {
+          if (chatId && now - existingRate.lastNotifiedAt >= config.borrowRate.cooldownMs) {
+            existingRate.alerted = true;
+            existingRate.lastNotifiedAt = now;
+            pendingNotifications.push({
+              kind: 'rate-high',
+              message: this.formatBorrowRateHigh(loan, currentRate, threshold, metrics),
+            });
+          }
+        } else if (currentRate < threshold && existingRate.alerted) {
+          if (chatId && now - existingRate.lastNotifiedAt >= config.borrowRate.cooldownMs) {
+            existingRate.alerted = false;
+            existingRate.lastNotifiedAt = now;
+            pendingNotifications.push({
+              kind: 'rate-normalized',
+              message: this.formatBorrowRateNormalized(loan, currentRate, threshold, metrics),
+            });
           }
         }
       }
@@ -683,9 +637,9 @@ export class Monitor {
         this.states.delete(stateKey);
       }
     }
-    for (const utilKey of Array.from(this.utilizationStates.keys())) {
-      if (utilKey.startsWith(walletPrefix) && !activeUtilKeys.has(utilKey)) {
-        this.utilizationStates.delete(utilKey);
+    for (const rateKey of Array.from(this.borrowRateStates.keys())) {
+      if (rateKey.startsWith(walletPrefix) && !activeRateKeys.has(rateKey)) {
+        this.borrowRateStates.delete(rateKey);
       }
     }
     for (const vaultKey of Array.from(this.vaultPositions.keys())) {
@@ -830,47 +784,45 @@ export class Monitor {
     ].join('\n');
   }
 
-  private formatUtilizationHigh(
-    loan: { marketName: string },
-    asset: { symbol: string },
-    utilization: number,
+  private formatBorrowRateHigh(
+    loan: { marketName: string; borrowed: { symbol: string }[] },
+    borrowRate: number,
     threshold: number,
-    metrics: { healthFactor: number; rBorrow: number },
+    metrics: { healthFactor: number },
   ): string {
-    const utilPct = (utilization * 100).toFixed(1);
-    const threshPct = (threshold * 100).toFixed(1);
+    const ratePct = (borrowRate * 100).toFixed(2);
+    const threshPct = (threshold * 100).toFixed(2);
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '\u221E';
 
     return [
-      `\u26A0\uFE0F <b>HIGH UTILIZATION</b> \u2014 Rate Spike Risk`,
+      `\u26A0\uFE0F <b>HIGH BORROW RATE</b>`,
       '',
-      `Market: ${loan.marketName} \u00B7 ${asset.symbol}`,
-      `Utilization: <b>${utilPct}%</b> (target: ${threshPct}%)`,
-      `HF: <b>${hf}</b> \u00B7 Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
+      `Market: ${loan.marketName} \u00B7 ${loan.borrowed.map((b) => b.symbol).join('+')}`,
+      `Borrow rate: <b>${ratePct}%</b> (threshold: ${threshPct}%)`,
+      `HF: <b>${hf}</b>`,
       '',
-      `Utilization above target \u2014 borrow rates may spike sharply.`,
+      `Borrow rate is above ${threshPct}% \u2014 consider reducing exposure or repaying debt.`,
     ].join('\n');
   }
 
-  private formatUtilizationNormalized(
-    loan: { marketName: string },
-    asset: { symbol: string },
-    utilization: number,
+  private formatBorrowRateNormalized(
+    loan: { marketName: string; borrowed: { symbol: string }[] },
+    borrowRate: number,
     threshold: number,
-    metrics: { healthFactor: number; rBorrow: number },
+    metrics: { healthFactor: number },
   ): string {
-    const utilPct = (utilization * 100).toFixed(1);
-    const threshPct = (threshold * 100).toFixed(1);
+    const ratePct = (borrowRate * 100).toFixed(2);
+    const threshPct = (threshold * 100).toFixed(2);
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '\u221E';
 
     return [
-      `\u2705 <b>UTILIZATION NORMALIZED</b>`,
+      `\u2705 <b>BORROW RATE NORMALIZED</b>`,
       '',
-      `Market: ${loan.marketName} \u00B7 ${asset.symbol}`,
-      `Utilization: <b>${utilPct}%</b> (target: ${threshPct}%)`,
-      `HF: <b>${hf}</b> \u00B7 Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
+      `Market: ${loan.marketName} \u00B7 ${loan.borrowed.map((b) => b.symbol).join('+')}`,
+      `Borrow rate: <b>${ratePct}%</b> (threshold: ${threshPct}%)`,
+      `HF: <b>${hf}</b>`,
       '',
-      `Utilization back below target \u2014 borrow rates returning to normal.`,
+      `Borrow rate back below ${threshPct}%.`,
     ].join('\n');
   }
 
@@ -904,10 +856,10 @@ export class Monitor {
           ? 'Recovery'
           : kind === 'all-clear'
             ? 'All Clear'
-            : kind === 'utilization-high'
-              ? 'High Utilization'
-              : kind === 'utilization-normalized'
-                ? 'Utilization Normalized'
+            : kind === 'rate-high'
+              ? 'High Borrow Rate'
+              : kind === 'rate-normalized'
+                ? 'Borrow Rate Normalized'
                 : 'Reminder';
     return `${base} ${index + 1}`;
   }

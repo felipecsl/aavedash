@@ -3,7 +3,7 @@ import test from 'node:test';
 import { serializeConfig } from '../src/configResponse.js';
 import type { AlertConfig } from '../src/storage.js';
 
-test('serializeConfig includes utilization settings', () => {
+test('serializeConfig includes borrow rate settings', () => {
   const config: AlertConfig = {
     wallets: [{ address: '0x1111111111111111111111111111111111111111', enabled: true }],
     telegram: {
@@ -37,14 +37,13 @@ test('serializeConfig includes utilization settings', () => {
       morphoRescueContract: '',
       maxGasGwei: 50,
     },
-    utilization: {
+    borrowRate: {
       enabled: true,
-      defaultThreshold: 0.92,
       cooldownMs: 600_000,
     },
   };
 
   const serialized = serializeConfig(config);
 
-  assert.deepEqual(serialized.utilization, config.utilization);
+  assert.deepEqual(serialized.borrowRate, config.borrowRate);
 });

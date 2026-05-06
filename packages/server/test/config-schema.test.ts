@@ -27,49 +27,37 @@ test('parseConfigBody maps legacy maxTopUpWbtc to maxRepayAmount', () => {
   assert.equal(parsed.data.watchdog?.maxRepayAmount, 0.75);
 });
 
-test('parseConfigBody accepts valid utilization config', () => {
+test('parseConfigBody accepts valid borrow rate config', () => {
   const parsed = parseConfigBody({
-    utilization: {
+    borrowRate: {
       enabled: true,
-      defaultThreshold: 0.92,
       cooldownMs: 600_000,
     },
   });
 
   assert.ok('data' in parsed);
-  assert.equal(parsed.data.utilization?.enabled, true);
-  assert.equal(parsed.data.utilization?.defaultThreshold, 0.92);
-  assert.equal(parsed.data.utilization?.cooldownMs, 600_000);
+  assert.equal(parsed.data.borrowRate?.enabled, true);
+  assert.equal(parsed.data.borrowRate?.cooldownMs, 600_000);
 });
 
-test('parseConfigBody rejects utilization threshold above 1', () => {
+test('parseConfigBody rejects non-positive borrow rate cooldown', () => {
   const parsed = parseConfigBody({
-    utilization: {
-      defaultThreshold: 1.5,
+    borrowRate: {
+      cooldownMs: 0,
     },
   });
 
   assert.ok('error' in parsed);
 });
 
-test('parseConfigBody rejects utilization threshold below 0', () => {
+test('parseConfigBody accepts partial borrow rate config', () => {
   const parsed = parseConfigBody({
-    utilization: {
-      defaultThreshold: -0.1,
-    },
-  });
-
-  assert.ok('error' in parsed);
-});
-
-test('parseConfigBody accepts partial utilization config', () => {
-  const parsed = parseConfigBody({
-    utilization: {
+    borrowRate: {
       enabled: false,
     },
   });
 
   assert.ok('data' in parsed);
-  assert.equal(parsed.data.utilization?.enabled, false);
-  assert.equal(parsed.data.utilization?.defaultThreshold, undefined);
+  assert.equal(parsed.data.borrowRate?.enabled, false);
+  assert.equal(parsed.data.borrowRate?.cooldownMs, undefined);
 });

@@ -1,4 +1,4 @@
-import type { AaveMarket, PollingConfig, UtilizationConfig, WatchdogConfig } from './types.js';
+import type { AaveMarket, BorrowRateConfig, PollingConfig, WatchdogConfig } from './types.js';
 
 export const AAVE_MARKETS: readonly AaveMarket[] = [
   {
@@ -84,9 +84,11 @@ export const DEFAULT_POLLING_CONFIG: PollingConfig = {
   cooldownMs: 30 * 60 * 1000,
 };
 
-export const DEFAULT_UTILIZATION_CONFIG: UtilizationConfig = {
+/** Borrow-rate threshold (decimal, e.g. 0.045 = 4.5%) above which a high-rate alert fires. */
+export const BORROW_RATE_ALERT_THRESHOLD = 0.045;
+
+export const DEFAULT_BORROW_RATE_CONFIG: BorrowRateConfig = {
   enabled: true,
-  defaultThreshold: 0.9,
   cooldownMs: 30 * 60 * 1000,
 };
 
