@@ -522,12 +522,13 @@ export function BorrowRateHistoryCard({
                   }}
                 />
                 <Line
-                  type="monotone"
+                  type="natural"
                   dataKey="borrowRate"
                   name={rateLabel}
                   stroke={CHART_COLORS.borrow}
                   strokeWidth={2.5}
                   dot={false}
+                  isAnimationActive={false}
                   activeDot={{ r: 5, fill: CHART_COLORS.borrow, stroke: '#0a1220', strokeWidth: 2 }}
                 />
               </LineChart>
