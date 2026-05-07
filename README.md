@@ -1,4 +1,7 @@
-# aash - Aave & Morpho Position Monitor
+<h1>
+  <img src="https://raw.githubusercontent.com/huskly/aash/refs/heads/master/logo.png" alt="aash logo" width="32" height="32" />
+  aash - Aave & Morpho Position Monitor
+</h1>
 
 A React + Vite dashboard that auto-loads Aave loans, Morpho Blue market positions, and Morpho vault deposits from a wallet address and computes portfolio and risk metrics.
 
