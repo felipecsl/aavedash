@@ -1,5 +1,5 @@
 <h1>
-  <img src="https://raw.githubusercontent.com/huskly/aash/refs/heads/master/logo.png" alt="aash logo" width="32" height="32" />
+  <img src="./logo-transparent.png" alt="aash logo" width="64" height="64" />
   aash - Aave & Morpho Position Monitor
 </h1>
 
