@@ -1,9 +1,9 @@
 <h1>
-  <img src="./logo-transparent.png" alt="aash logo" width="64" height="64" />
-  aash - Aave & Morpho Position Monitor
+  <img src="./logo-transparent.png" alt="aash logo" width="128" height="128" align="center" />
+  aash - Your DeFi Risk Console
 </h1>
 
-A React + Vite dashboard that auto-loads Aave loans, Morpho Blue market positions, and Morpho vault deposits from a wallet address and computes portfolio and risk metrics.
+A React + Vite dashboard that tracks Aave loans, Morpho Blue market positions, and Morpho vault deposits from a wallet address and computes portfolio and risk metrics.
 
 ## Goals
 
