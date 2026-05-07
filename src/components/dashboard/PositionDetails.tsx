@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Separator } from '../ui/separator';
 import { fmtAmount, fmtPct, fmtUSD, toBadgeVariant } from '../../lib/formatters';
 import { type ReserveTelemetry } from '@aave-monitor/core';
+import { SensitiveValue } from './privacy';
 
 export function SelectedLoanLabel({ loan }: { loan: LoanPosition | null }) {
   if (!loan) return null;
@@ -28,6 +29,7 @@ export function SelectedLoanLabel({ loan }: { loan: LoanPosition | null }) {
 }
 
 export function PositionDetailsSection({
+  hideSensitiveValues,
   borrowRateHistory,
   loanInterestHistory,
   computed,
@@ -36,6 +38,7 @@ export function PositionDetailsSection({
   reserveTelemetryError,
   selectedLoan,
 }: {
+  hideSensitiveValues: boolean;
   borrowRateHistory: BorrowRateSample[];
   loanInterestHistory: InterestSnapshot[];
   computed: Computed;
@@ -47,10 +50,14 @@ export function PositionDetailsSection({
   const isMorphoLoan = selectedLoan?.marketName.startsWith('morpho_') ?? false;
   return (
     <section className="mt-2 grid gap-4 [grid-template-columns:minmax(320px,0.95fr)_minmax(0,2fr)] max-[980px]:grid-cols-1">
-      <PositionSnapshotCard computed={computed} selectedLoan={selectedLoan} />
+      <PositionSnapshotCard
+        hideSensitiveValues={hideSensitiveValues}
+        computed={computed}
+        selectedLoan={selectedLoan}
+      />
 
       <div className="grid gap-4">
-        <StatusCard computed={computed} />
+        <StatusCard hideSensitiveValues={hideSensitiveValues} computed={computed} />
 
         {reserveTelemetry ? (
           <UtilizationCurveCard reserve={reserveTelemetry} />
@@ -83,24 +90,31 @@ export function PositionDetailsSection({
 
         {isMorphoLoan ? (
           <InterestAccrualHistoryCard
+            hideSensitiveValues={hideSensitiveValues}
             kind="loan"
             snapshots={loanInterestHistory}
             currentTimeMs={now}
           />
         ) : null}
 
-        <MetricsGrid computed={computed} selectedLoan={selectedLoan} />
+        <MetricsGrid
+          hideSensitiveValues={hideSensitiveValues}
+          computed={computed}
+          selectedLoan={selectedLoan}
+        />
         <MonitoringChecklistCard computed={computed} />
-        <SensitivityCard computed={computed} />
+        <SensitivityCard hideSensitiveValues={hideSensitiveValues} computed={computed} />
       </div>
     </section>
   );
 }
 
 function PositionSnapshotCard({
+  hideSensitiveValues,
   computed,
   selectedLoan,
 }: {
+  hideSensitiveValues: boolean;
   computed: Computed;
   selectedLoan: LoanPosition | null;
 }) {
@@ -113,21 +127,31 @@ function PositionSnapshotCard({
       </CardHeader>
       <CardContent>
         <AssetList
+          hideSensitiveValues={hideSensitiveValues}
           assets={selectedLoan?.borrowed ?? []}
           emptyLabel="No borrowed assets"
           label="Borrowed assets"
         />
         <StaticField label="Market" value={selectedLoan?.marketName ?? '—'} />
-        <StaticField label="Debt (USD)" value={fmtUSD(computed.debt, 0)} />
+        <StaticField
+          hideSensitiveValues={hideSensitiveValues}
+          label="Debt (USD)"
+          value={fmtUSD(computed.debt, 0)}
+        />
         <Separator />
 
         <AssetList
+          hideSensitiveValues={hideSensitiveValues}
           assets={selectedLoan?.supplied ?? []}
           emptyLabel="No supplied collateral assets"
           label="Supplied collateral assets"
         />
 
-        <StaticField label="Collateral value (USD)" value={fmtUSD(computed.collateralUSD, 0)} />
+        <StaticField
+          hideSensitiveValues={hideSensitiveValues}
+          label="Collateral value (USD)"
+          value={fmtUSD(computed.collateralUSD, 0)}
+        />
         <Separator />
 
         <TwoColumn>
@@ -147,10 +171,12 @@ function PositionSnapshotCard({
 }
 
 function AssetList({
+  hideSensitiveValues,
   assets,
   emptyLabel,
   label,
 }: {
+  hideSensitiveValues: boolean;
   assets: LoanPosition['borrowed'];
   emptyLabel: string;
   label: string;
@@ -171,7 +197,9 @@ function AssetList({
             >
               <span className="font-medium">{asset.symbol}</span>
               <span className="text-muted-foreground">
-                {fmtAmount(asset.amount)} | {fmtUSD(asset.usdValue, 0)}
+                <SensitiveValue hidden={hideSensitiveValues}>
+                  {fmtAmount(asset.amount)} | {fmtUSD(asset.usdValue, 0)}
+                </SensitiveValue>
               </span>
             </li>
           ))
@@ -181,7 +209,13 @@ function AssetList({
   );
 }
 
-function StatusCard({ computed }: { computed: Computed }) {
+function StatusCard({
+  hideSensitiveValues,
+  computed,
+}: {
+  hideSensitiveValues: boolean;
+  computed: Computed;
+}) {
   const status = healthLabel(computed.healthFactor);
 
   return (
@@ -208,14 +242,25 @@ function StatusCard({ computed }: { computed: Computed }) {
           value={Number.isFinite(computed.adjustedHF) ? computed.adjustedHF.toFixed(2) : '∞'}
           caption="Excludes same-asset collateral (watchdog view)"
         />
-        <LiquidationKpi computed={computed} />
-        <KpiCard title="Equity" value={fmtUSD(computed.equity, 0)} caption="Collateral - Debt" />
+        <LiquidationKpi hideSensitiveValues={hideSensitiveValues} computed={computed} />
+        <KpiCard
+          hideSensitiveValues={hideSensitiveValues}
+          title="Equity"
+          value={fmtUSD(computed.equity, 0)}
+          caption="Collateral - Debt"
+        />
       </CardContent>
     </Card>
   );
 }
 
-function LiquidationKpi({ computed }: { computed: Computed }) {
+function LiquidationKpi({
+  hideSensitiveValues,
+  computed,
+}: {
+  hideSensitiveValues: boolean;
+  computed: Computed;
+}) {
   const singleLiq = computed.assetLiquidations[0];
   if (computed.assetLiquidations.length <= 1) {
     return (
@@ -224,6 +269,7 @@ function LiquidationKpi({ computed }: { computed: Computed }) {
         value={
           singleLiq && Number.isFinite(singleLiq.liqPrice) ? fmtUSD(singleLiq.liqPrice, 2) : '—'
         }
+        hideSensitiveValues={hideSensitiveValues}
         caption={
           singleLiq ? `Price drop to liq: ${fmtPct(clamp(singleLiq.priceDropToLiq, 0, 1), 1)}` : ''
         }
@@ -239,9 +285,16 @@ function LiquidationKpi({ computed }: { computed: Computed }) {
           <li key={liquidation.symbol} className="flex items-center justify-between gap-2 text-sm">
             <span className="text-muted-foreground">{liquidation.symbol}</span>
             <span className="text-right">
-              {Number.isFinite(liquidation.liqPrice)
-                ? `${fmtUSD(liquidation.liqPrice, 2)} (-${fmtPct(clamp(liquidation.priceDropToLiq, 0, 1), 1)})`
-                : 'N/A'}
+              {Number.isFinite(liquidation.liqPrice) ? (
+                <>
+                  <SensitiveValue hidden={hideSensitiveValues}>
+                    {fmtUSD(liquidation.liqPrice, 2)}
+                  </SensitiveValue>{' '}
+                  (-{fmtPct(clamp(liquidation.priceDropToLiq, 0, 1), 1)})
+                </>
+              ) : (
+                'N/A'
+              )}
             </span>
           </li>
         ))}
@@ -251,9 +304,11 @@ function LiquidationKpi({ computed }: { computed: Computed }) {
 }
 
 function MetricsGrid({
+  hideSensitiveValues,
   computed,
   selectedLoan,
 }: {
+  hideSensitiveValues: boolean;
   computed: Computed;
   selectedLoan: LoanPosition | null;
 }) {
@@ -264,16 +319,29 @@ function MetricsGrid({
           <CardTitle>Main Metrics</CardTitle>
         </CardHeader>
         <CardContent>
-          <Row label="Collateral value" value={fmtUSD(computed.collateralUSD, 0)} />
-          <Row label="Debt" value={fmtUSD(computed.debt, 0)} />
+          <Row
+            hideSensitiveValues={hideSensitiveValues}
+            label="Collateral value"
+            value={fmtUSD(computed.collateralUSD, 0)}
+          />
+          <Row
+            hideSensitiveValues={hideSensitiveValues}
+            label="Debt"
+            value={fmtUSD(computed.debt, 0)}
+          />
           <Row label="LTV" value={fmtPct(computed.ltv)} />
           <Row
             label="Leverage (C/E)"
             value={Number.isFinite(computed.leverage) ? `${computed.leverage.toFixed(2)}x` : '∞'}
           />
           <Row label="Borrow power used" value={fmtPct(computed.borrowPowerUsed)} />
-          <Row label="Borrow headroom" value={fmtUSD(computed.borrowHeadroom, 0)} />
           <Row
+            hideSensitiveValues={hideSensitiveValues}
+            label="Borrow headroom"
+            value={fmtUSD(computed.borrowHeadroom, 0)}
+          />
+          <Row
+            hideSensitiveValues={hideSensitiveValues}
             label="Liq. price"
             value={Number.isFinite(computed.liqPrice) ? fmtUSD(computed.liqPrice, 2) : '—'}
           />
@@ -286,7 +354,11 @@ function MetricsGrid({
           <Separator />
           <Row label="Liquidation threshold" value={fmtPct(computed.lt)} />
           <Row label="LTV at liquidation" value={fmtPct(computed.ltvAtLiq)} />
-          <Row label="Collateral buffer" value={fmtUSD(computed.collateralBufferUSD, 0)} />
+          <Row
+            hideSensitiveValues={hideSensitiveValues}
+            label="Collateral buffer"
+            value={fmtUSD(computed.collateralBufferUSD, 0)}
+          />
         </CardContent>
       </Card>
 
@@ -298,10 +370,22 @@ function MetricsGrid({
           <Row label="Supply APY" value={fmtPct(computed.rSupply)} />
           <Row label="Borrow APY" value={fmtPct(computed.rBorrow)} />
           <Separator />
-          <Row label="Supply earnings (annual)" value={fmtUSD(computed.supplyEarnUSD, 0)} />
-          <Row label="Borrow cost (annual)" value={fmtUSD(computed.borrowCostUSD, 0)} />
+          <Row
+            hideSensitiveValues={hideSensitiveValues}
+            label="Supply earnings (annual)"
+            value={fmtUSD(computed.supplyEarnUSD, 0)}
+          />
+          <Row
+            hideSensitiveValues={hideSensitiveValues}
+            label="Borrow cost (annual)"
+            value={fmtUSD(computed.borrowCostUSD, 0)}
+          />
           <Separator />
-          <Row label="Net earnings (annual)" value={fmtUSD(computed.netEarnUSD, 0)} />
+          <Row
+            hideSensitiveValues={hideSensitiveValues}
+            label="Net earnings (annual)"
+            value={fmtUSD(computed.netEarnUSD, 0)}
+          />
           <Row label="Net APY (on equity)" value={fmtPct(computed.netAPYOnEquity)} />
           <p className="text-xs text-muted-foreground">
             Net APY is ROE: (supply - borrow) / equity.
@@ -354,7 +438,13 @@ function MonitoringChecklistCard({ computed }: { computed: Computed }) {
   );
 }
 
-function SensitivityCard({ computed }: { computed: Computed }) {
+function SensitivityCard({
+  hideSensitiveValues,
+  computed,
+}: {
+  hideSensitiveValues: boolean;
+  computed: Computed;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -369,11 +459,13 @@ function SensitivityCard({ computed }: { computed: Computed }) {
         <KpiCard
           title="Max borrow (by LTV)"
           value={fmtUSD(computed.maxBorrowByLTV, 0)}
+          hideSensitiveValues={hideSensitiveValues}
           caption="Based on weighted collateral LTV"
         />
         <KpiCard
           title="Collateral needed at HF=1"
           value={fmtUSD(computed.collateralUSDAtLiq, 0)}
+          hideSensitiveValues={hideSensitiveValues}
           caption="= Debt / liquidation threshold"
         />
       </CardContent>
@@ -385,21 +477,43 @@ function TwoColumn({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-2 gap-3">{children}</div>;
 }
 
-function StaticField({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function StaticField({
+  hideSensitiveValues = false,
+  label,
+  value,
+  hint,
+}: {
+  hideSensitiveValues?: boolean;
+  label: string;
+  value: string;
+  hint?: string;
+}) {
   return (
     <div className="grid min-w-0 gap-1 text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <p className="font-semibold">{value}</p>
+      <p className="font-semibold">
+        <SensitiveValue hidden={hideSensitiveValues}>{value}</SensitiveValue>
+      </p>
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({
+  hideSensitiveValues = false,
+  label,
+  value,
+}: {
+  hideSensitiveValues?: boolean;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="flex justify-between gap-3 text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-semibold tabular-nums">{value}</span>
+      <SensitiveValue hidden={hideSensitiveValues} className="font-semibold tabular-nums">
+        {value}
+      </SensitiveValue>
     </div>
   );
 }
@@ -417,11 +531,13 @@ function ChecklistItem({ title, detail, ok }: { title: string; detail: string; o
 }
 
 function KpiCard({
+  hideSensitiveValues = false,
   title,
   value,
   caption,
   valueClassName,
 }: {
+  hideSensitiveValues?: boolean;
   title: string;
   value: string;
   caption: string;
@@ -431,7 +547,7 @@ function KpiCard({
     <article className="rounded-lg border border-border bg-accent p-3">
       <p className="text-xs text-muted-foreground">{title}</p>
       <p className={`my-1 text-2xl font-semibold tracking-tight ${valueClassName ?? ''}`}>
-        {value}
+        <SensitiveValue hidden={hideSensitiveValues}>{value}</SensitiveValue>
       </p>
       <p className="text-xs text-muted-foreground">{caption}</p>
     </article>

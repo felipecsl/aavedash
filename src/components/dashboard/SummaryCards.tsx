@@ -1,36 +1,23 @@
 import { healthLabel, type PortfolioSummary } from '@aave-monitor/core';
 import { Eye, EyeOff } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { MetricTooltip } from '../MetricTooltip';
 import { cn } from '../../lib/utils';
 import { fmtPct, fmtUSD, toBadgeVariant } from '../../lib/formatters';
+import { SensitiveValue } from './privacy';
 
-const TOP_LEVEL_PRIVACY_STORAGE_KEY = 'aave-monitor:hide-top-level-values';
-
-function getInitialHideTopLevelValues(): boolean {
-  if (typeof window === 'undefined') return false;
-
-  try {
-    return window.localStorage.getItem(TOP_LEVEL_PRIVACY_STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-export function PortfolioSummaryCard({ portfolio }: { portfolio: PortfolioSummary }) {
-  const [hideTopLevelValues, setHideTopLevelValues] = useState(getInitialHideTopLevelValues);
+export function PortfolioSummaryCard({
+  hideSensitiveValues,
+  portfolio,
+  onTogglePrivacy,
+}: {
+  hideSensitiveValues: boolean;
+  portfolio: PortfolioSummary;
+  onTogglePrivacy: () => void;
+}) {
   const dailyNetEarn = portfolio.totalNetEarn / 365;
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(TOP_LEVEL_PRIVACY_STORAGE_KEY, String(hideTopLevelValues));
-    } catch {
-      // Ignore storage errors so the dashboard still works when storage is unavailable.
-    }
-  }, [hideTopLevelValues]);
 
   return (
     <Card className="mt-4">
@@ -42,12 +29,13 @@ export function PortfolioSummaryCard({ portfolio }: { portfolio: PortfolioSummar
                 <p className="text-xs text-muted-foreground">Total Debt</p>
                 <p
                   className={cn(
-                    'text-4xl font-bold tracking-tight tabular-nums transition-[filter] duration-200',
-                    hideTopLevelValues && 'select-none blur-sm',
+                    'text-4xl font-bold tracking-tight tabular-nums',
+                    hideSensitiveValues && 'text-foreground',
                   )}
-                  aria-label={hideTopLevelValues ? 'Total Debt hidden' : undefined}
                 >
-                  {fmtUSD(portfolio.totalDebt, 0)}
+                  <SensitiveValue hidden={hideSensitiveValues}>
+                    {fmtUSD(portfolio.totalDebt, 0)}
+                  </SensitiveValue>
                 </p>
               </MetricTooltip>
             </div>
@@ -59,12 +47,13 @@ export function PortfolioSummaryCard({ portfolio }: { portfolio: PortfolioSummar
                 <p className="text-xs text-muted-foreground">Total Assets</p>
                 <p
                   className={cn(
-                    'text-xl font-semibold tabular-nums transition-[filter] duration-200',
-                    hideTopLevelValues && 'select-none blur-sm',
+                    'text-xl font-semibold tabular-nums',
+                    hideSensitiveValues && 'text-foreground',
                   )}
-                  aria-label={hideTopLevelValues ? 'Total Assets hidden' : undefined}
                 >
-                  {fmtUSD(portfolio.totalAssets, 0)}
+                  <SensitiveValue hidden={hideSensitiveValues}>
+                    {fmtUSD(portfolio.totalAssets, 0)}
+                  </SensitiveValue>
                 </p>
               </div>
             </MetricTooltip>
@@ -72,12 +61,12 @@ export function PortfolioSummaryCard({ portfolio }: { portfolio: PortfolioSummar
               variant="ghost"
               size="icon"
               className="text-muted-foreground"
-              onClick={() => setHideTopLevelValues((currentValue) => !currentValue)}
-              aria-label={hideTopLevelValues ? 'Show top-level amounts' : 'Hide top-level amounts'}
-              aria-pressed={hideTopLevelValues}
-              title={hideTopLevelValues ? 'Show top-level amounts' : 'Hide top-level amounts'}
+              onClick={onTogglePrivacy}
+              aria-label={hideSensitiveValues ? 'Show sensitive values' : 'Hide sensitive values'}
+              aria-pressed={hideSensitiveValues}
+              title={hideSensitiveValues ? 'Show sensitive values' : 'Hide sensitive values'}
             >
-              {hideTopLevelValues ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              {hideSensitiveValues ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -113,36 +102,43 @@ export function PortfolioSummaryCard({ portfolio }: { portfolio: PortfolioSummar
             description="Risk collateral is the sum of supplied collateral USD value across loan positions only."
             label="Risk collateral"
             value={fmtUSD(portfolio.totalRiskCollateral, 0)}
+            hidden={hideSensitiveValues}
           />
           <PortfolioMetric
             description="Vault deposits are the sum of Morpho vault position values in USD."
             label="Vault deposits"
             value={fmtUSD(portfolio.totalVaultAssets, 0)}
+            hidden={hideSensitiveValues}
           />
           <PortfolioMetric
             description="Net worth is loan collateral minus loan debt, plus Morpho vault deposit value."
             label="Net worth"
             value={fmtUSD(portfolio.totalNetWorth, 0)}
+            hidden={hideSensitiveValues}
           />
           <PortfolioMetric
             description="Net earnings are annual loan supply income plus vault income minus annual borrow cost."
             label="Net earnings"
             value={`${fmtUSD(portfolio.totalNetEarn, 0)}/yr`}
+            hidden={hideSensitiveValues}
           />
           <PortfolioMetric
             description="Net earnings per day are estimated by dividing annual net earnings by 365."
             label="Net earnings per day"
             value={`${fmtUSD(dailyNetEarn, 2)}/day`}
+            hidden={hideSensitiveValues}
           />
           <PortfolioMetric
             description="Net borrow cost is the gross annual borrow interest cost across loan positions before supply or vault income offsets."
             label="Net borrow cost"
             value={`${fmtUSD(portfolio.totalBorrowCost, 0)}/yr`}
+            hidden={hideSensitiveValues}
           />
           <PortfolioMetric
             description="Accrued interest is the sum of outstanding loan accrued interest reported by the upstream protocol APIs, where available."
             label="Accrued interest"
             value={fmtUSD(portfolio.totalAccruedBorrowInterest, 2)}
+            hidden={hideSensitiveValues}
           />
           <PortfolioMetric
             description="Borrow power used is total debt divided by the sum of each loan's collateral value times its weighted max LTV."
@@ -187,16 +183,21 @@ export function PortfolioSummaryCard({ portfolio }: { portfolio: PortfolioSummar
 
 function PortfolioMetric({
   description,
+  hidden = false,
   label,
   value,
 }: {
   description: string;
+  hidden?: boolean;
   label: string;
   value: string;
 }) {
   return (
     <MetricTooltip description={description}>
-      {label} <span className="font-semibold tabular-nums text-foreground">{value}</span>
+      {label}{' '}
+      <SensitiveValue hidden={hidden} className="font-semibold tabular-nums text-foreground">
+        {value}
+      </SensitiveValue>
     </MetricTooltip>
   );
 }

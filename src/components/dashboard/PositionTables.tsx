@@ -9,6 +9,7 @@ import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { cn } from '../../lib/utils';
 import { fmtAmount, fmtPct, fmtUSD, toBadgeVariant } from '../../lib/formatters';
+import { SensitiveValue } from './privacy';
 
 export type LoanRow = {
   loan: LoanPosition;
@@ -99,10 +100,12 @@ function compareLoanSortValues(a: string | number, b: string | number, direction
 }
 
 export function LoanPositionsTable({
+  hideSensitiveValues,
   rows,
   selectedLoanId,
   onSelectLoan,
 }: {
+  hideSensitiveValues: boolean;
   rows: LoanRow[];
   selectedLoanId: string;
   onSelectLoan: (loanId: string) => void;
@@ -212,12 +215,18 @@ export function LoanPositionsTable({
                   <td className="px-4 py-3">{loan.supplied.map((a) => a.symbol).join(', ')}</td>
                   <td className="px-4 py-3">{loan.borrowed.map((a) => a.symbol).join(' + ')}</td>
                   <td className="px-4 py-3 text-right font-semibold tabular-nums">
-                    {fmtUSD(metrics.debt, 0)}
+                    <SensitiveValue hidden={hideSensitiveValues}>
+                      {fmtUSD(metrics.debt, 0)}
+                    </SensitiveValue>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    {loan.accruedBorrowInterestUsd == null
-                      ? '—'
-                      : fmtUSD(loan.accruedBorrowInterestUsd, 2)}
+                    {loan.accruedBorrowInterestUsd == null ? (
+                      '—'
+                    ) : (
+                      <SensitiveValue hidden={hideSensitiveValues}>
+                        {fmtUSD(loan.accruedBorrowInterestUsd, 2)}
+                      </SensitiveValue>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Badge variant={toBadgeVariant(healthLabel(metrics.healthFactor).tone)}>
@@ -242,10 +251,12 @@ export function LoanPositionsTable({
 }
 
 export function VaultPositionsTable({
+  hideSensitiveValues,
   vaults,
   selectedVaultAddress,
   onSelectVault,
 }: {
+  hideSensitiveValues: boolean;
   vaults: MorphoVaultPosition[];
   selectedVaultAddress: string;
   onSelectVault: (vaultAddress: string) => void;
@@ -274,6 +285,7 @@ export function VaultPositionsTable({
               {vaults.map((vault) => (
                 <VaultRow
                   key={vault.id}
+                  hideSensitiveValues={hideSensitiveValues}
                   vault={vault}
                   isSelected={vault.vaultAddress === selectedVaultAddress}
                   onSelect={() => onSelectVault(vault.vaultAddress)}
@@ -288,10 +300,12 @@ export function VaultPositionsTable({
 }
 
 function VaultRow({
+  hideSensitiveValues,
   vault,
   isSelected,
   onSelect,
 }: {
+  hideSensitiveValues: boolean;
   vault: MorphoVaultPosition;
   isSelected: boolean;
   onSelect: () => void;
@@ -311,12 +325,18 @@ function VaultRow({
         </div>
       </td>
       <td className="px-4 py-3">{vault.asset.symbol}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{fmtAmount(vault.totalAssets)}</td>
+      <td className="px-4 py-3 text-right tabular-nums">
+        <SensitiveValue hidden={hideSensitiveValues}>{fmtAmount(vault.totalAssets)}</SensitiveValue>
+      </td>
       <td className="px-4 py-3 text-right font-semibold tabular-nums">
-        {fmtUSD(vault.totalAssetsUsd, 0)}
+        <SensitiveValue hidden={hideSensitiveValues}>
+          {fmtUSD(vault.totalAssetsUsd, 0)}
+        </SensitiveValue>
       </td>
       <td className="px-4 py-3 text-right tabular-nums">{fmtPct(vault.netApy)}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{fmtAmount(vault.shares)}</td>
+      <td className="px-4 py-3 text-right tabular-nums">
+        <SensitiveValue hidden={hideSensitiveValues}>{fmtAmount(vault.shares)}</SensitiveValue>
+      </td>
     </tr>
   );
 }

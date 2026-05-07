@@ -1,4 +1,6 @@
-export function Stat({ label, value }: { label: string; value: string | number }) {
+import type React from 'react';
+
+export function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-border bg-accent px-3 py-2">
       <p className="text-xs text-muted-foreground">{label}</p>

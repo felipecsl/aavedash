@@ -14,6 +14,7 @@ import { Button } from './ui/button';
 import { Stat } from './Stat';
 import { fmtUsd } from './chartFormat';
 import type { PortfolioSnapshot } from '../api/aaveMonitor';
+import { SensitiveBlock, SensitiveValue } from './dashboard/privacy';
 
 type HistoryWindow = '24h' | '7d' | '30d' | '90d' | '180d';
 
@@ -39,9 +40,11 @@ const CHART_STYLE = {
 };
 
 export function PortfolioHistoryCard({
+  hideSensitiveValues,
   samples,
   currentTimeMs,
 }: {
+  hideSensitiveValues: boolean;
   samples: PortfolioSnapshot[];
   currentTimeMs: number;
 }) {
@@ -110,88 +113,111 @@ export function PortfolioHistoryCard({
         {filtered.length >= 2 ? (
           <>
             <div className="grid gap-1 sm:grid-cols-3">
-              <Stat label="Total Assets" value={fmtUsd(latest?.totalAssets ?? 0)} />
-              <Stat label="Total Debt" value={fmtUsd(latest?.totalDebt ?? 0)} />
-              <Stat label="Net Worth" value={fmtUsd(latest?.netWorth ?? 0)} />
+              <Stat
+                label="Total Assets"
+                value={
+                  <SensitiveValue hidden={hideSensitiveValues}>
+                    {fmtUsd(latest?.totalAssets ?? 0)}
+                  </SensitiveValue>
+                }
+              />
+              <Stat
+                label="Total Debt"
+                value={
+                  <SensitiveValue hidden={hideSensitiveValues}>
+                    {fmtUsd(latest?.totalDebt ?? 0)}
+                  </SensitiveValue>
+                }
+              />
+              <Stat
+                label="Net Worth"
+                value={
+                  <SensitiveValue hidden={hideSensitiveValues}>
+                    {fmtUsd(latest?.netWorth ?? 0)}
+                  </SensitiveValue>
+                }
+              />
             </div>
 
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart
-                data={data}
-                style={CHART_STYLE}
-                margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
-              >
-                <CartesianGrid strokeDasharray="5 5" stroke={COLORS.grid} vertical={false} />
-                <XAxis
-                  dataKey="timestamp"
-                  type="number"
-                  scale="time"
-                  domain={['dataMin', 'dataMax']}
-                  tickFormatter={xTickFormatter}
-                  tick={{ fill: COLORS.axis, fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={{ stroke: COLORS.grid }}
-                  minTickGap={60}
-                />
-                <YAxis
-                  domain={[0, maxValue]}
-                  tickFormatter={(v) => fmtUsd(v)}
-                  tick={{ fill: COLORS.axis, fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={80}
-                />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const ts = payload[0]?.payload?.timestamp as number | undefined;
-                    return (
-                      <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-lg">
-                        {ts && (
-                          <p className="mb-1 font-medium text-muted-foreground">
-                            {new Date(ts).toLocaleString([], {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </p>
-                        )}
-                        {payload.map((entry) => (
-                          <p
-                            key={entry.name}
-                            style={{ color: entry.color }}
-                            className="font-semibold"
-                          >
-                            {entry.name}: {fmtUsd(Number(entry.value ?? 0))}
-                          </p>
-                        ))}
-                      </div>
-                    );
-                  }}
-                  cursor={{ stroke: 'rgba(139, 158, 179, 0.4)', strokeWidth: 1 }}
-                />
-                <Legend wrapperStyle={{ fontSize: 12, color: COLORS.axis }} />
-                <Line
-                  type="monotone"
-                  dataKey="totalAssets"
-                  name="Total Assets"
-                  stroke={COLORS.assets}
-                  strokeWidth={2.5}
-                  dot={false}
-                  activeDot={{ r: 5, fill: COLORS.assets, stroke: '#0a1220', strokeWidth: 2 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="totalDebt"
-                  name="Total Debt"
-                  stroke={COLORS.debt}
-                  strokeWidth={2.5}
-                  dot={false}
-                  activeDot={{ r: 5, fill: COLORS.debt, stroke: '#0a1220', strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <SensitiveBlock hidden={hideSensitiveValues}>
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart
+                  data={data}
+                  style={CHART_STYLE}
+                  margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="5 5" stroke={COLORS.grid} vertical={false} />
+                  <XAxis
+                    dataKey="timestamp"
+                    type="number"
+                    scale="time"
+                    domain={['dataMin', 'dataMax']}
+                    tickFormatter={xTickFormatter}
+                    tick={{ fill: COLORS.axis, fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={{ stroke: COLORS.grid }}
+                    minTickGap={60}
+                  />
+                  <YAxis
+                    domain={[0, maxValue]}
+                    tickFormatter={(v) => fmtUsd(v)}
+                    tick={{ fill: COLORS.axis, fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={80}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const ts = payload[0]?.payload?.timestamp as number | undefined;
+                      return (
+                        <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-lg">
+                          {ts && (
+                            <p className="mb-1 font-medium text-muted-foreground">
+                              {new Date(ts).toLocaleString([], {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </p>
+                          )}
+                          {payload.map((entry) => (
+                            <p
+                              key={entry.name}
+                              style={{ color: entry.color }}
+                              className="font-semibold"
+                            >
+                              {entry.name}: {fmtUsd(Number(entry.value ?? 0))}
+                            </p>
+                          ))}
+                        </div>
+                      );
+                    }}
+                    cursor={{ stroke: 'rgba(139, 158, 179, 0.4)', strokeWidth: 1 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12, color: COLORS.axis }} />
+                  <Line
+                    type="monotone"
+                    dataKey="totalAssets"
+                    name="Total Assets"
+                    stroke={COLORS.assets}
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 5, fill: COLORS.assets, stroke: '#0a1220', strokeWidth: 2 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="totalDebt"
+                    name="Total Debt"
+                    stroke={COLORS.debt}
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 5, fill: COLORS.debt, stroke: '#0a1220', strokeWidth: 2 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </SensitiveBlock>
           </>
         ) : (
           <div className="rounded-lg border border-border bg-accent px-4 py-5 text-sm text-muted-foreground">

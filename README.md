@@ -32,7 +32,7 @@
 - Wallet-only input UX.
 - Wallet details auto-fetch on load when valid.
 - Last successfully loaded wallet is saved in browser `localStorage` and auto-used on reload when query params are absent.
-- The summary card eye toggle can blur `Total Debt` and `Total Assets`, and that privacy preference is saved in browser `localStorage`.
+- The summary card eye toggle can blur sensitive dashboard values, including top-level totals, position balances, vault amounts, USD metrics, and monetary history charts. The privacy preference is saved in browser `localStorage`.
 - Manual `Refresh` button to reload the current dashboard data on demand.
 - Automatic refresh every 120 seconds after a wallet is loaded.
 - Multi-market support:

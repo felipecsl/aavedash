@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { computeLoanMetrics, computePortfolioSummary } from '@aave-monitor/core';
 import { BorrowRateHistoryCard, InterestAccrualHistoryCard } from './components/ReserveCharts';
 import { ServerSettings } from './components/ServerSettings';
@@ -14,6 +14,10 @@ import {
   VaultPositionsTable,
 } from './components/dashboard/PositionTables';
 import { PositionDetailsSection, SelectedLoanLabel } from './components/dashboard/PositionDetails';
+import {
+  DASHBOARD_PRIVACY_STORAGE_KEY,
+  getInitialDashboardPrivacy,
+} from './components/dashboard/privacyStorage';
 import { usePortfolioMonitor } from './hooks/usePortfolioMonitor';
 import { usePositionDetailsData } from './hooks/usePositionDetailsData';
 
@@ -36,6 +40,7 @@ export default function App() {
     selectVault,
   } = usePortfolioMonitor();
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [hideSensitiveValues, setHideSensitiveValues] = useState(getInitialDashboardPrivacy);
   const nextToastId = useRef(1);
 
   const {
@@ -67,6 +72,14 @@ export default function App() {
   );
   const vaultRows = useMemo(() => result?.vaults ?? [], [result]);
   const hasAnyPositions = Boolean(result && (result.loans.length > 0 || result.vaults.length > 0));
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DASHBOARD_PRIVACY_STORAGE_KEY, String(hideSensitiveValues));
+    } catch {
+      // Ignore storage errors so the dashboard still works when storage is unavailable.
+    }
+  }, [hideSensitiveValues]);
 
   const handleFetch = async (event: FormEvent) => {
     event.preventDefault();
@@ -112,18 +125,32 @@ export default function App() {
             <>
               {hasAnyPositions ? (
                 <>
-                  {portfolio ? <PortfolioSummaryCard portfolio={portfolio} /> : null}
+                  {portfolio ? (
+                    <PortfolioSummaryCard
+                      hideSensitiveValues={hideSensitiveValues}
+                      portfolio={portfolio}
+                      onTogglePrivacy={() =>
+                        setHideSensitiveValues((currentValue) => !currentValue)
+                      }
+                    />
+                  ) : null}
 
                   <div className="mt-4">
-                    <PortfolioHistoryCard samples={portfolioHistory} currentTimeMs={now} />
+                    <PortfolioHistoryCard
+                      hideSensitiveValues={hideSensitiveValues}
+                      samples={portfolioHistory}
+                      currentTimeMs={now}
+                    />
                   </div>
 
                   <LoanPositionsTable
+                    hideSensitiveValues={hideSensitiveValues}
                     rows={loanRows}
                     selectedLoanId={selectedLoan?.id ?? ''}
                     onSelectLoan={selectLoan}
                   />
                   <VaultPositionsTable
+                    hideSensitiveValues={hideSensitiveValues}
                     vaults={vaultRows}
                     selectedVaultAddress={selectedVaultAddress}
                     onSelectVault={selectVault}
@@ -147,6 +174,7 @@ export default function App() {
                           emptyMessage="Net APY history needs at least two samples. Keep the dashboard running and refreshing to build the chart over time."
                         />
                         <InterestAccrualHistoryCard
+                          hideSensitiveValues={hideSensitiveValues}
                           kind="vault"
                           title={`${selectedVault.vaultName} — Daily Earnings`}
                           description={`Realized earnings for ${selectedVault.vaultSymbol} derived from Morpho cumulative PnL.`}
@@ -159,6 +187,7 @@ export default function App() {
                     <>
                       <SelectedLoanLabel loan={selectedLoan} />
                       <PositionDetailsSection
+                        hideSensitiveValues={hideSensitiveValues}
                         borrowRateHistory={borrowRateHistory}
                         loanInterestHistory={loanInterestHistory}
                         computed={computed}

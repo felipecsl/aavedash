@@ -22,6 +22,7 @@ import { Button } from './ui/button';
 import { Stat } from './Stat';
 import { fmtUsd } from './chartFormat';
 import type { InterestSnapshot } from '../api/aaveMonitor';
+import { SensitiveBlock, SensitiveValue } from './dashboard/privacy';
 
 export type BorrowRateSample = {
   timestamp: string;
@@ -555,12 +556,14 @@ const INTEREST_WINDOWS: Array<{ value: InterestHistoryWindow; label: string; dur
   ];
 
 export function InterestAccrualHistoryCard({
+  hideSensitiveValues = false,
   snapshots,
   kind,
   title,
   description,
   currentTimeMs,
 }: {
+  hideSensitiveValues?: boolean;
   snapshots: InterestSnapshot[];
   kind: 'loan' | 'vault';
   title?: string;
@@ -636,96 +639,118 @@ export function InterestAccrualHistoryCard({
         {data.length >= 2 ? (
           <>
             <div className="grid gap-1 sm:grid-cols-3">
-              <Stat label={totalLabel} value={fmtUsd(totalDelta)} />
-              <Stat label="Daily avg" value={fmtUsd(avgDelta)} />
-              <Stat label="Max day" value={fmtUsd(maxDelta)} />
+              <Stat
+                label={totalLabel}
+                value={
+                  <SensitiveValue hidden={hideSensitiveValues}>{fmtUsd(totalDelta)}</SensitiveValue>
+                }
+              />
+              <Stat
+                label="Daily avg"
+                value={
+                  <SensitiveValue hidden={hideSensitiveValues}>{fmtUsd(avgDelta)}</SensitiveValue>
+                }
+              />
+              <Stat
+                label="Max day"
+                value={
+                  <SensitiveValue hidden={hideSensitiveValues}>{fmtUsd(maxDelta)}</SensitiveValue>
+                }
+              />
             </div>
 
-            <ResponsiveContainer width="100%" height={280}>
-              <ComposedChart
-                data={data}
-                style={CHART_STYLE}
-                margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
-              >
-                <CartesianGrid strokeDasharray="5 5" stroke={CHART_COLORS.grid} vertical={false} />
-                <XAxis
-                  dataKey="timestamp"
-                  type="number"
-                  scale="time"
-                  domain={['dataMin', 'dataMax']}
-                  tickFormatter={xTickFormatter}
-                  tick={{ fill: CHART_COLORS.axis, fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={{ stroke: CHART_COLORS.grid }}
-                  minTickGap={30}
-                />
-                <YAxis
-                  yAxisId="delta"
-                  tickFormatter={(v: number) => fmtUsd(v)}
-                  tick={{ fill: CHART_COLORS.axis, fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={60}
-                />
-                <YAxis
-                  yAxisId="cumulative"
-                  orientation="right"
-                  tickFormatter={(v: number) => fmtUsd(v)}
-                  tick={{ fill: CHART_COLORS.axis, fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={60}
-                />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const p = payload[0];
-                    const ts = p?.payload?.timestamp as number | undefined;
-                    const delta = Number(p?.payload?.deltaUsd ?? 0);
-                    const cumulative = Number(p?.payload?.cumulativeUsd ?? 0);
-                    return (
-                      <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-lg">
-                        {ts && (
-                          <p className="mb-1 font-medium text-muted-foreground">
-                            {new Date(ts).toLocaleDateString([], {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                            })}
+            <SensitiveBlock hidden={hideSensitiveValues}>
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart
+                  data={data}
+                  style={CHART_STYLE}
+                  margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="5 5"
+                    stroke={CHART_COLORS.grid}
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="timestamp"
+                    type="number"
+                    scale="time"
+                    domain={['dataMin', 'dataMax']}
+                    tickFormatter={xTickFormatter}
+                    tick={{ fill: CHART_COLORS.axis, fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={{ stroke: CHART_COLORS.grid }}
+                    minTickGap={30}
+                  />
+                  <YAxis
+                    yAxisId="delta"
+                    tickFormatter={(v: number) => fmtUsd(v)}
+                    tick={{ fill: CHART_COLORS.axis, fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={60}
+                  />
+                  <YAxis
+                    yAxisId="cumulative"
+                    orientation="right"
+                    tickFormatter={(v: number) => fmtUsd(v)}
+                    tick={{ fill: CHART_COLORS.axis, fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={60}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const p = payload[0];
+                      const ts = p?.payload?.timestamp as number | undefined;
+                      const delta = Number(p?.payload?.deltaUsd ?? 0);
+                      const cumulative = Number(p?.payload?.cumulativeUsd ?? 0);
+                      return (
+                        <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-lg">
+                          {ts && (
+                            <p className="mb-1 font-medium text-muted-foreground">
+                              {new Date(ts).toLocaleDateString([], {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </p>
+                          )}
+                          <p style={{ color: barColor }} className="font-semibold">
+                            {kind === 'loan' ? 'Interest' : 'Earnings'}: {fmtUsd(delta)}
                           </p>
-                        )}
-                        <p style={{ color: barColor }} className="font-semibold">
-                          {kind === 'loan' ? 'Interest' : 'Earnings'}: {fmtUsd(delta)}
-                        </p>
-                        <p className="text-muted-foreground">Cumulative: {fmtUsd(cumulative)}</p>
-                      </div>
-                    );
-                  }}
-                  cursor={{ fill: 'rgba(139, 158, 179, 0.15)' }}
-                />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <ReferenceLine yAxisId="delta" y={0} stroke={CHART_COLORS.grid} />
-                <Bar
-                  yAxisId="delta"
-                  dataKey="deltaUsd"
-                  name="Daily"
-                  fill={barColor}
-                  radius={[3, 3, 0, 0]}
-                />
-                <Line
-                  yAxisId="cumulative"
-                  type="monotone"
-                  dataKey="cumulativeUsd"
-                  name="Cumulative"
-                  stroke={CHART_COLORS.supply}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
+                          <p className="text-muted-foreground">Cumulative: {fmtUsd(cumulative)}</p>
+                        </div>
+                      );
+                    }}
+                    cursor={{ fill: 'rgba(139, 158, 179, 0.15)' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <ReferenceLine yAxisId="delta" y={0} stroke={CHART_COLORS.grid} />
+                  <Bar
+                    yAxisId="delta"
+                    dataKey="deltaUsd"
+                    name="Daily"
+                    fill={barColor}
+                    radius={[3, 3, 0, 0]}
+                  />
+                  <Line
+                    yAxisId="cumulative"
+                    type="monotone"
+                    dataKey="cumulativeUsd"
+                    name="Cumulative"
+                    stroke={CHART_COLORS.supply}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </SensitiveBlock>
             <p className="text-xs text-muted-foreground">
-              Cumulative at end of window: {fmtUsd(endCumulative)}
+              Cumulative at end of window:{' '}
+              <SensitiveValue hidden={hideSensitiveValues}>{fmtUsd(endCumulative)}</SensitiveValue>
             </p>
           </>
         ) : (

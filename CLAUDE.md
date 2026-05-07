@@ -86,7 +86,7 @@ Frontend notes:
 
 - `src/App.tsx` stores the last successfully loaded wallet under `localStorage['aave-monitor:last-wallet']`.
 - Borrow APR history is tracked server-side in SQLite (`packages/server/data/rates.db`) by the monitor poll loop and served via `/api/rates/history`. The frontend fetches from the API and falls back to browser `localStorage` (`aave-monitor:borrow-apr-history:*`) when the backend has no data yet.
-- `src/components/dashboard/SummaryCards.tsx` stores the top-level privacy toggle under `localStorage['aave-monitor:hide-top-level-values']` and uses it to blur `Total Debt` and `Total Assets`.
+- The dashboard privacy toggle is stored under `localStorage['aave-monitor:hide-top-level-values']` and blurs sensitive dashboard values, including top-level totals, position balances, vault amounts, USD metrics, and monetary history charts.
 - On page load, wallet resolution order is: query string (`wallet`, `address`, `walletAddress`) first, then saved local storage wallet.
 - Portfolio summary math is centralized in `computePortfolioSummary()` in `packages/aave-core/src/metrics.ts`.
 - The dashboard's `Total Assets`, `Net worth`, `Supply APY`, `Net earnings`, estimated daily net earnings, and `Net APY` include Morpho vault deposits; `HF`, `Borrow power used`, and `Repay coverage` remain loan-only.
