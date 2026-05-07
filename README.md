@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./logo-transparent.png" alt="aash logo" width="140" height="140" />
+  <img src="./logo-readme.png" alt="aash logo" width="140" height="140" />
 
   <h1>aash</h1>
 
