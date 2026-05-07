@@ -1,9 +1,22 @@
-<h1>
-  <img src="./logo-transparent.png" alt="aash logo" width="128" height="128" align="center" />
-  aash - Your DeFi Risk Console
-</h1>
+<div align="center">
+  <img src="./logo-transparent.png" alt="aash logo" width="140" height="140" />
 
-A React + Vite dashboard that tracks Aave loans, Morpho Blue market positions, and Morpho vault deposits from a wallet address and computes portfolio and risk metrics.
+  <h1>aash</h1>
+
+  <p><strong>Your DeFi Risk Console</strong></p>
+
+  <p>
+    A React + Vite dashboard that tracks Aave loans, Morpho Blue market positions,
+    and Morpho vault deposits from a wallet address and computes portfolio and risk metrics.
+  </p>
+
+  <p>
+    <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111827" />
+    <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white" />
+    <img alt="Vite" src="https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white" />
+    <img alt="Tailwind CSS" src="https://img.shields.io/badge/Tailwind_CSS-4-38B2AC?logo=tailwindcss&logoColor=white" />
+  </p>
+</div>
 
 ## Goals
 
