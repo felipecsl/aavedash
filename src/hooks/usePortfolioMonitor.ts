@@ -10,10 +10,14 @@ import {
   type MorphoVaultPosition,
 } from '@aave-monitor/core';
 import {
+  fetchBorrowRateHistory,
   fetchPortfolioHistory,
   fetchWalletAssetBalances,
   type PortfolioSnapshot,
 } from '../api/aaveMonitor';
+import type { BorrowRateSample } from '../components/ReserveCharts';
+import { buildBorrowRateHistoryKey, readBorrowRateHistory } from '../lib/borrowRateHistory';
+import { combineBorrowRateHistories } from '../lib/portfolioBorrowRateHistory';
 
 const GRAPH_API_KEY = import.meta.env.VITE_THE_GRAPH_API_KEY as string | undefined;
 const COINGECKO_API_KEY = import.meta.env.VITE_COINGECKO_API_KEY as string | undefined;
@@ -44,6 +48,7 @@ type UsePortfolioMonitorResult = {
   result: FetchState | null;
   walletBorrowedAssetBalances: Map<string, number>;
   portfolioHistory: PortfolioSnapshot[];
+  portfolioBorrowRateHistory: BorrowRateSample[];
   now: number;
   selectedLoanId: string;
   selectedVaultAddress: string;
@@ -66,6 +71,9 @@ export function usePortfolioMonitor(): UsePortfolioMonitorResult {
     Map<string, number>
   >(new Map());
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioSnapshot[]>([]);
+  const [portfolioBorrowRateHistory, setPortfolioBorrowRateHistory] = useState<BorrowRateSample[]>(
+    [],
+  );
   const [now, setNow] = useState(() => Date.now());
   const hasAutoFetchedInitialWallet = useRef(false);
 
@@ -225,6 +233,42 @@ export function usePortfolioMonitor(): UsePortfolioMonitorResult {
     };
   }, [result?.wallet, result?.lastUpdated]);
 
+  useEffect(() => {
+    const resolvedWallet = result?.wallet;
+    const loans = result?.loans ?? [];
+    if (!resolvedWallet || loans.length === 0) {
+      setPortfolioBorrowRateHistory([]); // eslint-disable-line react-hooks/set-state-in-effect
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all(
+      loans.map(async (loan) => {
+        const apiSamples = await fetchBorrowRateHistory(resolvedWallet, loan.id).catch(() => []);
+        if (apiSamples.length > 0) {
+          return { samples: apiSamples, weight: loan.totalBorrowedUsd };
+        }
+
+        if (loan.borrowed.length === 0) {
+          return { samples: [], weight: loan.totalBorrowedUsd };
+        }
+
+        const primaryBorrow = loan.borrowed.reduce((max, borrowed) =>
+          borrowed.usdValue > max.usdValue ? borrowed : max,
+        );
+        const storageKey = buildBorrowRateHistoryKey(loan.marketName, primaryBorrow.address);
+        return { samples: readBorrowRateHistory(storageKey), weight: loan.totalBorrowedUsd };
+      }),
+    ).then((histories) => {
+      if (cancelled) return;
+      setPortfolioBorrowRateHistory(combineBorrowRateHistories(histories));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [result?.wallet, result?.lastUpdated, result?.loans]);
+
   return {
     wallet,
     setWallet,
@@ -233,6 +277,7 @@ export function usePortfolioMonitor(): UsePortfolioMonitorResult {
     result,
     walletBorrowedAssetBalances,
     portfolioHistory,
+    portfolioBorrowRateHistory,
     now,
     selectedLoanId,
     selectedVaultAddress,

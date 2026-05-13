@@ -30,6 +30,7 @@ export default function App() {
     result,
     walletBorrowedAssetBalances,
     portfolioHistory,
+    portfolioBorrowRateHistory,
     now,
     selectedVaultAddress,
     selectedLoan,
@@ -139,6 +140,8 @@ export default function App() {
                     <PortfolioHistoryCard
                       hideSensitiveValues={hideSensitiveValues}
                       samples={portfolioHistory}
+                      borrowRateSamples={portfolioBorrowRateHistory}
+                      borrowPositionCount={result.loans.length}
                       currentTimeMs={now}
                     />
                   </div>
