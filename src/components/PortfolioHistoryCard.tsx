@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import {
   LineChart,
   Line,
+  Bar,
+  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -14,12 +16,12 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Stat } from './Stat';
 import { fmtUsd } from './chartFormat';
-import type { PortfolioSnapshot } from '../api/aaveMonitor';
+import type { InterestSnapshot, PortfolioSnapshot } from '../api/aaveMonitor';
 import { SensitiveBlock, SensitiveValue } from './dashboard/privacy';
 import type { BorrowRateSample } from './ReserveCharts';
 
 type HistoryWindow = '24h' | '7d' | '30d' | '90d' | '180d';
-type HistoryTab = 'portfolio' | 'borrowApr';
+type HistoryTab = 'portfolio' | 'borrowApr' | 'borrowInterest';
 
 const HISTORY_WINDOWS: Array<{ value: HistoryWindow; label: string; durationMs: number }> = [
   { value: '24h', label: '24h', durationMs: 24 * 60 * 60 * 1000 },
@@ -54,12 +56,14 @@ export function PortfolioHistoryCard({
   hideSensitiveValues,
   samples,
   borrowRateSamples,
+  borrowInterestSnapshots,
   borrowPositionCount,
   currentTimeMs,
 }: {
   hideSensitiveValues: boolean;
   samples: PortfolioSnapshot[];
   borrowRateSamples: BorrowRateSample[];
+  borrowInterestSnapshots: InterestSnapshot[];
   borrowPositionCount: number;
   currentTimeMs: number;
 }) {
@@ -82,6 +86,13 @@ export function PortfolioHistoryCard({
       return Number.isFinite(timestamp) && timestamp >= cutoff;
     });
   }, [borrowRateSamples, currentTimeMs, windowValue]);
+
+  const filteredBorrowInterestSnapshots = useMemo(() => {
+    const selected = HISTORY_WINDOWS.find((entry) => entry.value === windowValue);
+    if (!selected) return borrowInterestSnapshots;
+    const cutoff = currentTimeMs - selected.durationMs;
+    return borrowInterestSnapshots.filter((snapshot) => snapshot.timestamp >= cutoff);
+  }, [borrowInterestSnapshots, currentTimeMs, windowValue]);
 
   const { data, maxValue, latest } = useMemo(() => {
     if (filtered.length === 0) {
@@ -138,6 +149,43 @@ export function PortfolioHistoryCard({
     return Array.from({ length: 5 }, (_, i) => Math.round(i * step * 10000) / 10000);
   }, [maxRate]);
 
+  const {
+    data: borrowInterestData,
+    totalBorrowInterest,
+    averageBorrowInterest,
+    maxBorrowInterest,
+    endBorrowInterestCumulative,
+  } = useMemo(() => {
+    if (filteredBorrowInterestSnapshots.length === 0) {
+      return {
+        data: [],
+        totalBorrowInterest: 0,
+        averageBorrowInterest: 0,
+        maxBorrowInterest: 0,
+        endBorrowInterestCumulative: 0,
+      };
+    }
+
+    const points = filteredBorrowInterestSnapshots.map((snapshot) => ({
+      timestamp: snapshot.timestamp,
+      deltaUsd: snapshot.deltaUsd,
+      cumulativeUsd: snapshot.cumulativeUsd,
+    }));
+    const deltas = points.map((point) => point.deltaUsd);
+    const total = deltas.reduce((sum, value) => sum + value, 0);
+    const average = deltas.length > 0 ? total / deltas.length : 0;
+    const max = deltas.reduce((currentMax, value) => Math.max(currentMax, value), 0);
+    const end = points[points.length - 1]?.cumulativeUsd ?? 0;
+
+    return {
+      data: points,
+      totalBorrowInterest: total,
+      averageBorrowInterest: average,
+      maxBorrowInterest: max,
+      endBorrowInterestCumulative: end,
+    };
+  }, [filteredBorrowInterestSnapshots]);
+
   const xTickFormatter = useMemo(() => {
     if (data.length < 2) return (v: number) => String(v);
     const spanMs = data[data.length - 1]!.timestamp - data[0]!.timestamp;
@@ -161,10 +209,16 @@ export function PortfolioHistoryCard({
     return (v: number) => new Date(v).toLocaleDateString([], { month: 'short', day: 'numeric' });
   }, [borrowRateData]);
 
+  const borrowInterestXTickFormatter = useMemo(() => {
+    return (v: number) => new Date(v).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }, []);
+
   const description =
     activeTab === 'portfolio'
       ? 'Total assets and total debt snapshotted on each poll.'
-      : 'Debt-weighted borrow APR history combined across all open loan positions.';
+      : activeTab === 'borrowApr'
+        ? 'Debt-weighted borrow APR history combined across all open loan positions.'
+        : 'Daily borrow interest aggregated across all open loan positions.';
 
   return (
     <Card>
@@ -190,6 +244,14 @@ export function PortfolioHistoryCard({
               onClick={() => setActiveTab('borrowApr')}
             >
               Borrow APR
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={activeTab === 'borrowInterest' ? 'default' : 'ghost'}
+              onClick={() => setActiveTab('borrowInterest')}
+            >
+              Daily Interest
             </Button>
           </div>
           <div className="flex flex-wrap justify-end gap-1">
@@ -321,7 +383,7 @@ export function PortfolioHistoryCard({
           <div className="rounded-lg border border-border bg-accent px-4 py-5 text-sm text-muted-foreground">
             No portfolio history yet — data accrues on each poll.
           </div>
-        ) : filteredBorrowRateSamples.length >= 2 ? (
+        ) : activeTab === 'borrowApr' && filteredBorrowRateSamples.length >= 2 ? (
           <>
             <div className="grid gap-1 sm:grid-cols-3">
               <Stat label="Latest APR" value={fmtPct(lastRate)} />
@@ -405,10 +467,136 @@ export function PortfolioHistoryCard({
               </LineChart>
             </ResponsiveContainer>
           </>
-        ) : (
+        ) : activeTab === 'borrowApr' ? (
           <div className="rounded-lg border border-border bg-accent px-4 py-5 text-sm text-muted-foreground">
             Combined borrow APR history needs at least two samples from open loan positions. Keep
             the dashboard running and refreshing to build the chart over time.
+          </div>
+        ) : borrowInterestData.length >= 2 ? (
+          <>
+            <div className="grid gap-1 sm:grid-cols-3">
+              <Stat
+                label="Accrued (window)"
+                value={
+                  <SensitiveValue hidden={hideSensitiveValues}>
+                    {fmtUsd(totalBorrowInterest)}
+                  </SensitiveValue>
+                }
+              />
+              <Stat
+                label="Daily avg"
+                value={
+                  <SensitiveValue hidden={hideSensitiveValues}>
+                    {fmtUsd(averageBorrowInterest)}
+                  </SensitiveValue>
+                }
+              />
+              <Stat
+                label="Max day"
+                value={
+                  <SensitiveValue hidden={hideSensitiveValues}>
+                    {fmtUsd(maxBorrowInterest)}
+                  </SensitiveValue>
+                }
+              />
+            </div>
+
+            <SensitiveBlock hidden={hideSensitiveValues}>
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart
+                  data={borrowInterestData}
+                  style={CHART_STYLE}
+                  margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="5 5" stroke={COLORS.grid} vertical={false} />
+                  <XAxis
+                    dataKey="timestamp"
+                    type="number"
+                    scale="time"
+                    domain={['dataMin', 'dataMax']}
+                    tickFormatter={borrowInterestXTickFormatter}
+                    tick={{ fill: COLORS.axis, fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={{ stroke: COLORS.grid }}
+                    minTickGap={30}
+                  />
+                  <YAxis
+                    yAxisId="delta"
+                    tickFormatter={(v: number) => fmtUsd(v)}
+                    tick={{ fill: COLORS.axis, fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={60}
+                  />
+                  <YAxis
+                    yAxisId="cumulative"
+                    orientation="right"
+                    tickFormatter={(v: number) => fmtUsd(v)}
+                    tick={{ fill: COLORS.axis, fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={60}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const point = payload[0];
+                      const ts = point?.payload?.timestamp as number | undefined;
+                      const delta = Number(point?.payload?.deltaUsd ?? 0);
+                      const cumulative = Number(point?.payload?.cumulativeUsd ?? 0);
+                      return (
+                        <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-lg">
+                          {ts && (
+                            <p className="mb-1 font-medium text-muted-foreground">
+                              {new Date(ts).toLocaleDateString([], {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </p>
+                          )}
+                          <p style={{ color: COLORS.borrow }} className="font-semibold">
+                            Interest: {fmtUsd(delta)}
+                          </p>
+                          <p className="text-muted-foreground">Cumulative: {fmtUsd(cumulative)}</p>
+                        </div>
+                      );
+                    }}
+                    cursor={{ fill: 'rgba(139, 158, 179, 0.15)' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <ReferenceLine yAxisId="delta" y={0} stroke={COLORS.grid} />
+                  <Bar
+                    yAxisId="delta"
+                    dataKey="deltaUsd"
+                    name="Daily"
+                    fill={COLORS.borrow}
+                    radius={[3, 3, 0, 0]}
+                  />
+                  <Line
+                    yAxisId="cumulative"
+                    type="monotone"
+                    dataKey="cumulativeUsd"
+                    name="Cumulative"
+                    stroke={COLORS.assets}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </SensitiveBlock>
+            <p className="text-xs text-muted-foreground">
+              Cumulative at end of window:{' '}
+              <SensitiveValue hidden={hideSensitiveValues}>
+                {fmtUsd(endBorrowInterestCumulative)}
+              </SensitiveValue>
+            </p>
+          </>
+        ) : (
+          <div className="rounded-lg border border-border bg-accent px-4 py-5 text-sm text-muted-foreground">
+            Combined daily borrow interest needs at least two daily snapshots from open loan
+            positions. Keep the server running so snapshots can accrue on monitor polls.
           </div>
         )}
       </CardContent>

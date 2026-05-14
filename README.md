@@ -64,7 +64,7 @@
   - Separate Morpho vault table with deposited asset amount, USD value, net APY, and shares
   - Aave interest-rate model chart for the selected borrowed asset, including current utilization and the reserve kink
   - Borrow APR history chart for the selected borrowed asset, tracked server-side with 180-day retention
-  - Top-level portfolio history tabs for asset/debt snapshots and a debt-weighted Borrow APR history combined across all open loan positions
+  - Top-level portfolio history tabs for asset/debt snapshots, debt-weighted Borrow APR history, and combined daily borrow interest across all open loan positions
   - Repay coverage based on wallet balances that match borrowed assets
   - Monitoring checklist + sensitivity cards
 
@@ -237,12 +237,12 @@ The watchdog monitors loan health and can execute an atomic on-chain rescue when
 4. Token prices are fetched from CoinGecko for Aave assets, while Morpho positions use API-provided pricing or USD back-calculation for borrowed assets and vault deposits. Morpho market borrow/supply rates are aligned to Morpho's interface default 1-day average APY by preferring Morpho's `avgBorrowApy` / `avgSupplyApy` fields instead of the instantaneous spot rate.
 5. Portfolio-level aggregate metrics are computed across all active positions, with loan-risk metrics kept separate from supply-only vault assets.
 6. Detailed risk metrics are computed and rendered for the selected loan, while Morpho vaults render in a separate table.
-7. The backend monitor records borrow/supply rate samples to a SQLite database (`packages/server/data/rates.db`) every 15 minutes during its poll cycle. The dashboard fetches rate history from the `/api/rates/history` endpoint, including the top-level combined Borrow APR tab that debt-weights samples across all open loan positions; it falls back to browser `localStorage` when the backend has no data yet.
+7. The backend monitor records borrow/supply rate samples to a SQLite database (`packages/server/data/rates.db`) every 15 minutes during its poll cycle. The dashboard fetches rate history from the `/api/rates/history` endpoint, including the top-level combined Borrow APR tab that debt-weights samples across all open loan positions; it falls back to browser `localStorage` when the backend has no data yet. Morpho borrow interest snapshots are served from `/api/interest/history` and aggregated into the top-level Daily Interest tab.
 
 ## Limitations
 
 - Liquidation price is shown as a primary-collateral approximation for multi-collateral positions.
 - Coverage depends on the supported market list and indexer availability.
 - Metrics are simplified monitoring estimates, not a substitute for protocol-native risk engines.
-- Borrow APR history is forward-looking: the server begins recording from the first poll after deployment, so newly monitored wallets start with an empty chart.
+- Borrow APR and daily borrow-interest history are forward-looking: the server begins recording from the first poll after deployment, so newly monitored wallets start with empty charts.
 - GitHub Pages deployments require proper repository secrets if API keys are needed at build time.

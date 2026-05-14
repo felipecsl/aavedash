@@ -11,12 +11,15 @@ import {
 } from '@aave-monitor/core';
 import {
   fetchBorrowRateHistory,
+  fetchInterestHistory,
   fetchPortfolioHistory,
   fetchWalletAssetBalances,
+  type InterestSnapshot,
   type PortfolioSnapshot,
 } from '../api/aaveMonitor';
 import type { BorrowRateSample } from '../components/ReserveCharts';
 import { buildBorrowRateHistoryKey, readBorrowRateHistory } from '../lib/borrowRateHistory';
+import { combineBorrowInterestHistories } from '../lib/portfolioInterestHistory';
 import { combineBorrowRateHistories } from '../lib/portfolioBorrowRateHistory';
 
 const GRAPH_API_KEY = import.meta.env.VITE_THE_GRAPH_API_KEY as string | undefined;
@@ -49,6 +52,7 @@ type UsePortfolioMonitorResult = {
   walletBorrowedAssetBalances: Map<string, number>;
   portfolioHistory: PortfolioSnapshot[];
   portfolioBorrowRateHistory: BorrowRateSample[];
+  portfolioBorrowInterestHistory: InterestSnapshot[];
   now: number;
   selectedLoanId: string;
   selectedVaultAddress: string;
@@ -74,6 +78,9 @@ export function usePortfolioMonitor(): UsePortfolioMonitorResult {
   const [portfolioBorrowRateHistory, setPortfolioBorrowRateHistory] = useState<BorrowRateSample[]>(
     [],
   );
+  const [portfolioBorrowInterestHistory, setPortfolioBorrowInterestHistory] = useState<
+    InterestSnapshot[]
+  >([]);
   const [now, setNow] = useState(() => Date.now());
   const hasAutoFetchedInitialWallet = useRef(false);
 
@@ -269,6 +276,27 @@ export function usePortfolioMonitor(): UsePortfolioMonitorResult {
     };
   }, [result?.wallet, result?.lastUpdated, result?.loans]);
 
+  useEffect(() => {
+    const resolvedWallet = result?.wallet;
+    const loans = result?.loans ?? [];
+    if (!resolvedWallet || loans.length === 0) {
+      setPortfolioBorrowInterestHistory([]); // eslint-disable-line react-hooks/set-state-in-effect
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all(
+      loans.map((loan) => fetchInterestHistory(resolvedWallet, loan.id, 'loan').catch(() => [])),
+    ).then((histories) => {
+      if (cancelled) return;
+      setPortfolioBorrowInterestHistory(combineBorrowInterestHistories(histories));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [result?.wallet, result?.lastUpdated, result?.loans]);
+
   return {
     wallet,
     setWallet,
@@ -278,6 +306,7 @@ export function usePortfolioMonitor(): UsePortfolioMonitorResult {
     walletBorrowedAssetBalances,
     portfolioHistory,
     portfolioBorrowRateHistory,
+    portfolioBorrowInterestHistory,
     now,
     selectedLoanId,
     selectedVaultAddress,

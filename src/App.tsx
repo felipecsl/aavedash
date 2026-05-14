@@ -31,6 +31,7 @@ export default function App() {
     walletBorrowedAssetBalances,
     portfolioHistory,
     portfolioBorrowRateHistory,
+    portfolioBorrowInterestHistory,
     now,
     selectedVaultAddress,
     selectedLoan,
@@ -141,6 +142,7 @@ export default function App() {
                       hideSensitiveValues={hideSensitiveValues}
                       samples={portfolioHistory}
                       borrowRateSamples={portfolioBorrowRateHistory}
+                      borrowInterestSnapshots={portfolioBorrowInterestHistory}
                       borrowPositionCount={result.loans.length}
                       currentTimeMs={now}
                     />

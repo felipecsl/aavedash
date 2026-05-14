@@ -85,7 +85,7 @@ Backend server notes:
 Frontend notes:
 
 - `src/App.tsx` stores the last successfully loaded wallet under `localStorage['aave-monitor:last-wallet']`.
-- Borrow APR history is tracked server-side in SQLite (`packages/server/data/rates.db`) by the monitor poll loop and served via `/api/rates/history`. The frontend fetches from the API and falls back to browser `localStorage` (`aave-monitor:borrow-apr-history:*`) when the backend has no data yet. The top-level portfolio history card includes a Borrow APR tab that combines every open loan position into one debt-weighted APR series.
+- Borrow APR history is tracked server-side in SQLite (`packages/server/data/rates.db`) by the monitor poll loop and served via `/api/rates/history`. The frontend fetches from the API and falls back to browser `localStorage` (`aave-monitor:borrow-apr-history:*`) when the backend has no data yet. The top-level portfolio history card includes Borrow APR and Daily Interest tabs that combine every open loan position into one debt-weighted APR series and one aggregated borrow-interest series.
 - The dashboard privacy toggle is stored under `localStorage['aave-monitor:hide-top-level-values']` and blurs sensitive dashboard values, including top-level totals, position balances, vault amounts, USD metrics, and monetary history charts.
 - On page load, wallet resolution order is: query string (`wallet`, `address`, `walletAddress`) first, then saved local storage wallet.
 - Portfolio summary math is centralized in `computePortfolioSummary()` in `packages/aave-core/src/metrics.ts`.
