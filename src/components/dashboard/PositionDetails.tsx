@@ -2,12 +2,23 @@ import { AlertTriangle, Info, ShieldCheck } from 'lucide-react';
 import { clamp, healthLabel, type Computed, type LoanPosition } from '@aave-monitor/core';
 import { LoanPositionChartsCard, type BorrowRateSample } from '../ReserveCharts';
 import type { InterestSnapshot } from '../../api/aaveMonitor';
-import { Badge } from '../ui/badge';
+import type { WatchdogConfigState } from '../../hooks/useWatchdogConfig';
+import { Badge, type BadgeVariant } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Separator } from '../ui/separator';
 import { fmtAmount, fmtPct, fmtUSD, toBadgeVariant } from '../../lib/formatters';
 import { type ReserveTelemetry } from '@aave-monitor/core';
 import { SensitiveValue } from './privacy';
+import {
+  evaluateAutomation,
+  evaluateDepeg,
+  evaluateHealthFactor,
+  evaluateLtv,
+  evaluateOracleMarket,
+  evaluateRatesDrift,
+  type ChecklistState,
+  type ChecklistStatus,
+} from './monitoringChecklist';
 
 export function SelectedLoanLabel({ loan }: { loan: LoanPosition | null }) {
   if (!loan) return null;
@@ -31,6 +42,7 @@ export function PositionDetailsSection({
   reserveTelemetry,
   reserveTelemetryError,
   selectedLoan,
+  watchdogState,
 }: {
   hideSensitiveValues: boolean;
   borrowRateHistory: BorrowRateSample[];
@@ -40,6 +52,7 @@ export function PositionDetailsSection({
   reserveTelemetry: ReserveTelemetry | null;
   reserveTelemetryError: string;
   selectedLoan: LoanPosition | null;
+  watchdogState: WatchdogConfigState;
 }) {
   return (
     <section className="mt-2 grid gap-4 [grid-template-columns:minmax(320px,0.95fr)_minmax(0,2fr)] max-[980px]:grid-cols-1">
@@ -67,7 +80,13 @@ export function PositionDetailsSection({
           computed={computed}
           selectedLoan={selectedLoan}
         />
-        <MonitoringChecklistCard computed={computed} />
+        <MonitoringChecklistCard
+          computed={computed}
+          borrowRateHistory={borrowRateHistory}
+          reserveTelemetry={reserveTelemetry}
+          selectedLoan={selectedLoan}
+          watchdogState={watchdogState}
+        />
         <SensitivityCard hideSensitiveValues={hideSensitiveValues} computed={computed} />
       </div>
     </section>
@@ -356,43 +375,38 @@ function MetricsGrid({
   );
 }
 
-function MonitoringChecklistCard({ computed }: { computed: Computed }) {
+function MonitoringChecklistCard({
+  computed,
+  borrowRateHistory,
+  reserveTelemetry,
+  selectedLoan,
+  watchdogState,
+}: {
+  computed: Computed;
+  borrowRateHistory: BorrowRateSample[];
+  reserveTelemetry: ReserveTelemetry | null;
+  selectedLoan: LoanPosition | null;
+  watchdogState: WatchdogConfigState;
+}) {
+  const hfStatus = evaluateHealthFactor(computed);
+  const ltvStatus = evaluateLtv(computed);
+  const ratesDrift = evaluateRatesDrift(borrowRateHistory, computed);
+  const depeg = evaluateDepeg(selectedLoan);
+  const oracleMarket = evaluateOracleMarket(reserveTelemetry, selectedLoan);
+  const automation = evaluateAutomation(watchdogState, selectedLoan);
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Monitoring Checklist</CardTitle>
       </CardHeader>
       <CardContent className="grid-cols-3 max-[980px]:grid-cols-1">
-        <ChecklistItem
-          title="Health Factor"
-          ok={!computed.alertHF}
-          detail="Keep HF comfortably above 1.0; many traders target 1.7-2.5+."
-        />
-        <ChecklistItem
-          title="LTV vs LT"
-          ok={!computed.alertLTV}
-          detail="As LTV approaches liquidation threshold, small price moves can liquidate you."
-        />
-        <ChecklistItem
-          title="Rates drift"
-          ok
-          detail="Borrow/supply APYs are variable; net carry can flip quickly during volatility."
-        />
-        <ChecklistItem
-          title="Stablecoin depeg"
-          ok
-          detail="USDC/USDT are usually close to $1, but depegs can distort debt value."
-        />
-        <ChecklistItem
-          title="Oracle / market"
-          ok
-          detail="Liquidations depend on oracle price; liquidity + slippage matters in crashes."
-        />
-        <ChecklistItem
-          title="Automation"
-          ok
-          detail="Consider alerts (HF, price, LTV) and an emergency delever playbook."
-        />
+        <ChecklistItem title="Health Factor" status={hfStatus} />
+        <ChecklistItem title="LTV vs LT" status={ltvStatus} />
+        <ChecklistItem title="Rates drift" status={ratesDrift} />
+        <ChecklistItem title="Stablecoin depeg" status={depeg} />
+        <ChecklistItem title="Oracle / market" status={oracleMarket} />
+        <ChecklistItem title="Automation" status={automation} />
       </CardContent>
     </Card>
   );
@@ -478,14 +492,21 @@ function Row({
   );
 }
 
-function ChecklistItem({ title, detail, ok }: { title: string; detail: string; ok: boolean }) {
+const CHECKLIST_BADGE: Record<ChecklistState, { variant: BadgeVariant; label: string }> = {
+  ok: { variant: 'positive', label: 'OK' },
+  watch: { variant: 'destructive', label: 'Watch' },
+  unknown: { variant: 'default', label: 'N/A' },
+};
+
+function ChecklistItem({ title, status }: { title: string; status: ChecklistStatus }) {
+  const badge = CHECKLIST_BADGE[status.state];
   return (
     <article className="rounded-lg border border-border bg-accent p-3">
       <div className="flex items-center justify-between gap-2.5">
         <h3 className="text-sm font-medium">{title}</h3>
-        <Badge variant={ok ? 'positive' : 'destructive'}>{ok ? 'OK' : 'Watch'}</Badge>
+        <Badge variant={badge.variant}>{badge.label}</Badge>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{status.detail}</p>
     </article>
   );
 }
