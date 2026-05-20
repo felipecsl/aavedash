@@ -1,12 +1,6 @@
 import { AlertTriangle, Info, ShieldCheck } from 'lucide-react';
 import { clamp, healthLabel, type Computed, type LoanPosition } from '@aave-monitor/core';
-import {
-  BorrowRateHistoryCard,
-  InterestAccrualHistoryCard,
-  MorphoIrmCard,
-  type BorrowRateSample,
-  UtilizationCurveCard,
-} from '../ReserveCharts';
+import { LoanPositionChartsCard, type BorrowRateSample } from '../ReserveCharts';
 import type { InterestSnapshot } from '../../api/aaveMonitor';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -47,7 +41,6 @@ export function PositionDetailsSection({
   reserveTelemetryError: string;
   selectedLoan: LoanPosition | null;
 }) {
-  const isMorphoLoan = selectedLoan?.marketName.startsWith('morpho_') ?? false;
   return (
     <section className="mt-2 grid gap-4 [grid-template-columns:minmax(320px,0.95fr)_minmax(0,2fr)] max-[980px]:grid-cols-1">
       <PositionSnapshotCard
@@ -59,43 +52,15 @@ export function PositionDetailsSection({
       <div className="grid gap-4">
         <StatusCard hideSensitiveValues={hideSensitiveValues} computed={computed} />
 
-        {reserveTelemetry ? (
-          <UtilizationCurveCard reserve={reserveTelemetry} />
-        ) : selectedLoan?.marketName.startsWith('morpho_') ? (
-          <MorphoIrmCard
-            borrowRate={
-              selectedLoan.borrowed.reduce((max, b) => (b.usdValue > max.usdValue ? b : max))
-                .borrowRate
-            }
-            utilizationRate={selectedLoan.utilizationRate ?? 0}
-            lltv={selectedLoan.supplied[0]?.liqThreshold ?? 0}
-            supplyApy={selectedLoan.marketSupplyApy}
-          />
-        ) : reserveTelemetryError ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Interest Rate Model</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">{reserveTelemetryError}</p>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <BorrowRateHistoryCard
+        <LoanPositionChartsCard
+          hideSensitiveValues={hideSensitiveValues}
+          borrowRateHistory={borrowRateHistory}
+          loanInterestHistory={loanInterestHistory}
           currentTimeMs={now}
-          samples={borrowRateHistory}
-          reserve={reserveTelemetry}
+          reserveTelemetry={reserveTelemetry}
+          reserveTelemetryError={reserveTelemetryError}
+          selectedLoan={selectedLoan}
         />
-
-        {isMorphoLoan ? (
-          <InterestAccrualHistoryCard
-            hideSensitiveValues={hideSensitiveValues}
-            kind="loan"
-            snapshots={loanInterestHistory}
-            currentTimeMs={now}
-          />
-        ) : null}
 
         <MetricsGrid
           hideSensitiveValues={hideSensitiveValues}
