@@ -28,7 +28,7 @@ Configured via `.env` in project root (prefixed with `VITE_` for Vite exposure):
 - `RPC_URL` — Ethereum JSON-RPC endpoint used by backend for on-chain reads (default `https://eth.llamarpc.com`)
 - `WATCHDOG_EXECUTOR_PRIVATE_KEY` — optional private key for watchdog live mode executor; `WATCHDOG_PRIVATE_KEY` remains a fallback alias for backward compatibility
 - `WATCHDOG_MIN_RESULTING_HF` — optional override for minimum required post-rescue HF
-- `WATCHDOG_MAX_REPAY_AMOUNT` — optional override for the max debt-repay amount per rescue action (`WATCHDOG_MAX_TOP_UP_AMOUNT` and `WATCHDOG_MAX_TOP_UP_WBTC` still work as legacy fallbacks)
+- `WATCHDOG_MAX_REPAY_AMOUNT` — optional override for the max debt-repay amount per rescue action
 - `WATCHDOG_DEADLINE_SECONDS` — optional override for rescue transaction deadline in seconds
 - `WATCHDOG_RESCUE_CONTRACT` — optional override for Aave rescue contract address
 - `WATCHDOG_MORPHO_RESCUE_CONTRACT` — optional override for Morpho Blue rescue contract address

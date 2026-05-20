@@ -129,29 +129,6 @@ test('update() merges partial watchdog payload with existing watchdog config', (
   }
 });
 
-test('load() maps legacy maxTopUpWbtc field to maxRepayAmount', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'aash-storage-test-'));
-  const configPath = join(dir, 'config.json');
-  const saved = {
-    ...createBaseConfig(),
-    watchdog: {
-      enabled: true,
-      maxTopUpWbtc: 0.75,
-    },
-  };
-
-  try {
-    writeFileSync(configPath, JSON.stringify(saved, null, 2), 'utf-8');
-
-    const storage = new ConfigStorage(configPath);
-    const watchdog = storage.get().watchdog;
-
-    assert.equal(watchdog.maxRepayAmount, 0.75);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test('load() merges missing borrowRate fields from defaults', () => {
   const dir = mkdtempSync(join(tmpdir(), 'aash-storage-test-'));
   const configPath = join(dir, 'config.json');

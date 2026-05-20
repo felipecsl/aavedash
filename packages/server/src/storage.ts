@@ -73,10 +73,7 @@ function applyWatchdogEnvOverrides(watchdog: WatchdogConfig): void {
   const minResultingHF = parseEnvFloat('WATCHDOG_MIN_RESULTING_HF');
   if (minResultingHF !== undefined) watchdog.minResultingHF = minResultingHF;
 
-  const maxRepayAmount =
-    parseEnvFloat('WATCHDOG_MAX_REPAY_AMOUNT') ??
-    parseEnvFloat('WATCHDOG_MAX_TOP_UP_AMOUNT') ??
-    parseEnvFloat('WATCHDOG_MAX_TOP_UP_WBTC');
+  const maxRepayAmount = parseEnvFloat('WATCHDOG_MAX_REPAY_AMOUNT');
   if (maxRepayAmount !== undefined) watchdog.maxRepayAmount = maxRepayAmount;
 
   const deadlineSeconds = parseEnvFloat('WATCHDOG_DEADLINE_SECONDS');
@@ -90,22 +87,9 @@ function applyWatchdogEnvOverrides(watchdog: WatchdogConfig): void {
 }
 
 function mergeWatchdogConfig(config: Partial<WatchdogConfig> | undefined): WatchdogConfig {
-  const legacyConfig = (config ?? {}) as Partial<WatchdogConfig> & {
-    maxTopUpWbtc?: number;
-    maxTopUpAmount?: number;
-  };
-
   return {
     ...DEFAULT_WATCHDOG_CONFIG,
     ...config,
-    ...(config?.maxRepayAmount === undefined && legacyConfig.maxTopUpAmount !== undefined
-      ? { maxRepayAmount: legacyConfig.maxTopUpAmount }
-      : {}),
-    ...(config?.maxRepayAmount === undefined &&
-    legacyConfig.maxTopUpAmount === undefined &&
-    legacyConfig.maxTopUpWbtc !== undefined
-      ? { maxRepayAmount: legacyConfig.maxTopUpWbtc }
-      : {}),
   };
 }
 

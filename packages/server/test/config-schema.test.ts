@@ -16,17 +16,6 @@ test('parseConfigBody accepts morphoRescueContract updates', () => {
   );
 });
 
-test('parseConfigBody maps legacy maxTopUpWbtc to maxRepayAmount', () => {
-  const parsed = parseConfigBody({
-    watchdog: {
-      maxTopUpWbtc: 0.75,
-    },
-  });
-
-  assert.ok('data' in parsed);
-  assert.equal(parsed.data.watchdog?.maxRepayAmount, 0.75);
-});
-
 test('parseConfigBody accepts valid borrow rate config', () => {
   const parsed = parseConfigBody({
     borrowRate: {
