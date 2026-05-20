@@ -64,7 +64,13 @@ export function PositionDetailsSection({
 
       <div className="grid gap-4">
         <StatusCard hideSensitiveValues={hideSensitiveValues} computed={computed} />
-
+        <MonitoringChecklistCard
+          computed={computed}
+          borrowRateHistory={borrowRateHistory}
+          reserveTelemetry={reserveTelemetry}
+          selectedLoan={selectedLoan}
+          watchdogState={watchdogState}
+        />
         <LoanPositionChartsCard
           hideSensitiveValues={hideSensitiveValues}
           borrowRateHistory={borrowRateHistory}
@@ -74,18 +80,10 @@ export function PositionDetailsSection({
           reserveTelemetryError={reserveTelemetryError}
           selectedLoan={selectedLoan}
         />
-
         <MetricsGrid
           hideSensitiveValues={hideSensitiveValues}
           computed={computed}
           selectedLoan={selectedLoan}
-        />
-        <MonitoringChecklistCard
-          computed={computed}
-          borrowRateHistory={borrowRateHistory}
-          reserveTelemetry={reserveTelemetry}
-          selectedLoan={selectedLoan}
-          watchdogState={watchdogState}
         />
         <SensitivityCard hideSensitiveValues={hideSensitiveValues} computed={computed} />
       </div>
