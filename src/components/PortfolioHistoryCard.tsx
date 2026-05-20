@@ -19,6 +19,7 @@ import { fmtUsd } from './chartFormat';
 import type { InterestSnapshot, PortfolioSnapshot } from '../api/aaveMonitor';
 import { SensitiveBlock, SensitiveValue } from './dashboard/privacy';
 import type { BorrowRateSample } from './ReserveCharts';
+import { buildBorrowRateMovingAveragePoints } from '../lib/portfolioBorrowRateHistory';
 
 type HistoryWindow = '24h' | '7d' | '30d' | '90d' | '180d';
 type HistoryTab = 'portfolio' | 'borrowApr' | 'borrowInterest';
@@ -77,16 +78,6 @@ export function PortfolioHistoryCard({
     return samples.filter((s) => s.timestamp >= cutoff);
   }, [currentTimeMs, samples, windowValue]);
 
-  const filteredBorrowRateSamples = useMemo(() => {
-    const selected = HISTORY_WINDOWS.find((entry) => entry.value === windowValue);
-    if (!selected) return borrowRateSamples;
-    const cutoff = currentTimeMs - selected.durationMs;
-    return borrowRateSamples.filter((sample) => {
-      const timestamp = new Date(sample.timestamp).getTime();
-      return Number.isFinite(timestamp) && timestamp >= cutoff;
-    });
-  }, [borrowRateSamples, currentTimeMs, windowValue]);
-
   const filteredBorrowInterestSnapshots = useMemo(() => {
     const selected = HISTORY_WINDOWS.find((entry) => entry.value === windowValue);
     if (!selected) return borrowInterestSnapshots;
@@ -114,35 +105,36 @@ export function PortfolioHistoryCard({
 
   const {
     data: borrowRateData,
-    averageRate,
+    movingAverageRate,
     lastRate,
     maxRate,
   } = useMemo(() => {
-    if (filteredBorrowRateSamples.length === 0) {
+    if (borrowRateSamples.length === 0) {
       return {
         data: [],
-        averageRate: 0,
+        movingAverageRate: 0,
         lastRate: 0,
         maxRate: 0.02,
       };
     }
 
-    const average =
-      filteredBorrowRateSamples.reduce((sum, sample) => sum + sample.variableBorrowRate, 0) /
-      filteredBorrowRateSamples.length;
-    const last = filteredBorrowRateSamples.at(-1)?.variableBorrowRate ?? 0;
-    const max = Math.max(...filteredBorrowRateSamples.map((s) => s.variableBorrowRate), 0.02);
+    const selected = HISTORY_WINDOWS.find((entry) => entry.value === windowValue);
+    const cutoff = selected ? currentTimeMs - selected.durationMs : Number.NEGATIVE_INFINITY;
+    const points = buildBorrowRateMovingAveragePoints(borrowRateSamples);
+    const visiblePoints = points.filter((point) => point.timestamp >= cutoff);
+    const lastPoint = visiblePoints.at(-1);
+    const max = Math.max(
+      ...visiblePoints.flatMap((point) => [point.borrowRate, point.borrowRateMovingAverage]),
+      0.02,
+    );
 
     return {
-      data: filteredBorrowRateSamples.map((sample) => ({
-        timestamp: new Date(sample.timestamp).getTime(),
-        borrowRate: sample.variableBorrowRate,
-      })),
-      averageRate: average,
-      lastRate: last,
+      data: visiblePoints,
+      movingAverageRate: lastPoint?.borrowRateMovingAverage ?? 0,
+      lastRate: lastPoint?.borrowRate ?? 0,
       maxRate: max * 1.1,
     };
-  }, [filteredBorrowRateSamples]);
+  }, [borrowRateSamples, currentTimeMs, windowValue]);
 
   const borrowRateYTicks = useMemo(() => {
     const step = maxRate / 4;
@@ -383,11 +375,11 @@ export function PortfolioHistoryCard({
           <div className="rounded-lg border border-border bg-accent px-4 py-5 text-sm text-muted-foreground">
             No portfolio history yet — data accrues on each poll.
           </div>
-        ) : activeTab === 'borrowApr' && filteredBorrowRateSamples.length >= 2 ? (
+        ) : activeTab === 'borrowApr' && borrowRateData.length >= 2 ? (
           <>
             <div className="grid gap-1 sm:grid-cols-3">
               <Stat label="Latest APR" value={fmtPct(lastRate)} />
-              <Stat label="Average APR" value={fmtPct(averageRate)} />
+              <Stat label="7d Avg APR" value={fmtPct(movingAverageRate)} />
               <Stat label="Open Positions" value={borrowPositionCount.toLocaleString()} />
             </div>
 
@@ -421,8 +413,12 @@ export function PortfolioHistoryCard({
                 <Tooltip
                   content={({ active, payload }) => {
                     if (!active || !payload?.length) return null;
-                    const point = payload[0];
-                    const ts = point?.payload?.timestamp as number | undefined;
+                    const borrowPoint =
+                      payload.find((entry) => entry.dataKey === 'borrowRate') ?? payload[0];
+                    const averagePoint = payload.find(
+                      (entry) => entry.dataKey === 'borrowRateMovingAverage',
+                    );
+                    const ts = borrowPoint?.payload?.timestamp as number | undefined;
                     return (
                       <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-lg">
                         {ts && (
@@ -436,23 +432,17 @@ export function PortfolioHistoryCard({
                           </p>
                         )}
                         <p style={{ color: COLORS.borrow }} className="font-semibold">
-                          Borrow APR: {fmtPct(Number(point?.value ?? 0))}
+                          Borrow APR: {fmtPct(Number(borrowPoint?.value ?? 0))}
                         </p>
+                        {averagePoint && (
+                          <p style={{ color: COLORS.average }} className="font-semibold">
+                            7d Avg APR: {fmtPct(Number(averagePoint.value ?? 0))}
+                          </p>
+                        )}
                       </div>
                     );
                   }}
                   cursor={{ stroke: 'rgba(139, 158, 179, 0.4)', strokeWidth: 1 }}
-                />
-                <ReferenceLine
-                  y={averageRate}
-                  stroke={COLORS.average}
-                  strokeDasharray="6 5"
-                  label={{
-                    value: `Avg ${fmtPct(averageRate)}`,
-                    position: 'insideTopRight',
-                    fill: 'rgba(226, 236, 244, 0.65)',
-                    fontSize: 11,
-                  }}
                 />
                 <Line
                   type="natural"
@@ -463,6 +453,17 @@ export function PortfolioHistoryCard({
                   dot={false}
                   isAnimationActive={false}
                   activeDot={{ r: 5, fill: COLORS.borrow, stroke: '#0a1220', strokeWidth: 2 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="borrowRateMovingAverage"
+                  name="7d Avg APR"
+                  stroke={COLORS.average}
+                  strokeWidth={2}
+                  strokeDasharray="6 5"
+                  dot={false}
+                  isAnimationActive={false}
+                  activeDot={{ r: 4, fill: COLORS.average, stroke: '#0a1220', strokeWidth: 2 }}
                 />
               </LineChart>
             </ResponsiveContainer>

@@ -1,6 +1,7 @@
 import type { BorrowRateSample } from '../components/ReserveCharts';
 
 const BORROW_RATE_SAMPLE_BUCKET_MS = 15 * 60 * 1000;
+export const BORROW_RATE_MOVING_AVERAGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type BorrowRateHistoryInput = {
   samples: BorrowRateSample[];
@@ -11,6 +12,12 @@ type Bucket = {
   weightedBorrowRate: number;
   weightedUtilizationRate: number;
   totalWeight: number;
+};
+
+export type BorrowRateMovingAveragePoint = {
+  timestamp: number;
+  borrowRate: number;
+  borrowRateMovingAverage: number;
 };
 
 export function combineBorrowRateHistories(
@@ -49,4 +56,37 @@ export function combineBorrowRateHistories(
       variableBorrowRate: bucket.weightedBorrowRate / bucket.totalWeight,
       utilizationRate: bucket.weightedUtilizationRate / bucket.totalWeight,
     }));
+}
+
+export function buildBorrowRateMovingAveragePoints(
+  samples: BorrowRateSample[],
+  windowMs = BORROW_RATE_MOVING_AVERAGE_WINDOW_MS,
+): BorrowRateMovingAveragePoint[] {
+  const points = samples
+    .map((sample) => ({
+      timestamp: new Date(sample.timestamp).getTime(),
+      borrowRate: sample.variableBorrowRate,
+    }))
+    .filter((point) => Number.isFinite(point.timestamp))
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  let windowStart = 0;
+  let windowSum = 0;
+
+  return points.map((point, index) => {
+    windowSum += point.borrowRate;
+
+    const cutoff = point.timestamp - windowMs;
+    let firstWindowPoint = points[windowStart];
+    while (firstWindowPoint && firstWindowPoint.timestamp < cutoff) {
+      windowSum -= firstWindowPoint.borrowRate;
+      windowStart += 1;
+      firstWindowPoint = points[windowStart];
+    }
+
+    return {
+      ...point,
+      borrowRateMovingAverage: windowSum / (index - windowStart + 1),
+    };
+  });
 }
