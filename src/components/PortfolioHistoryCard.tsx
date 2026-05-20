@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
+  Area,
+  AreaChart,
   LineChart,
   Line,
   Bar,
@@ -87,6 +89,7 @@ export function PortfolioHistoryCard({
       timestamp: s.timestamp,
       totalAssets: s.totalAssets,
       totalDebt: s.totalDebt,
+      assetStack: Math.max(s.totalAssets - s.totalDebt, 0),
       netWorth: s.netWorth,
     }));
     const max = Math.max(...points.map((p) => Math.max(p.totalAssets, p.totalDebt)), 1);
@@ -287,11 +290,21 @@ export function PortfolioHistoryCard({
 
             <SensitiveBlock hidden={hideSensitiveValues}>
               <ResponsiveContainer width="100%" height={280}>
-                <LineChart
+                <AreaChart
                   data={data}
                   style={CHART_STYLE}
                   margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
                 >
+                  <defs>
+                    <linearGradient id="portfolioDebtArea" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={COLORS.debt} stopOpacity={0.55} />
+                      <stop offset="95%" stopColor={COLORS.debt} stopOpacity={0.18} />
+                    </linearGradient>
+                    <linearGradient id="portfolioAssetsArea" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={COLORS.assets} stopOpacity={0.55} />
+                      <stop offset="95%" stopColor={COLORS.assets} stopOpacity={0.18} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="5 5" stroke={COLORS.grid} vertical={false} />
                   <XAxis
                     dataKey="timestamp"
@@ -316,6 +329,9 @@ export function PortfolioHistoryCard({
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
                       const ts = payload[0]?.payload?.timestamp as number | undefined;
+                      const point = payload[0]?.payload as
+                        | { totalAssets?: number; totalDebt?: number }
+                        | undefined;
                       return (
                         <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-lg">
                           {ts && (
@@ -334,7 +350,12 @@ export function PortfolioHistoryCard({
                               style={{ color: entry.color }}
                               className="font-semibold"
                             >
-                              {entry.name}: {fmtUsd(Number(entry.value ?? 0))}
+                              {entry.name}:{' '}
+                              {fmtUsd(
+                                entry.dataKey === 'assetStack'
+                                  ? Number(point?.totalAssets ?? 0)
+                                  : Number(point?.totalDebt ?? entry.value ?? 0),
+                              )}
                             </p>
                           ))}
                         </div>
@@ -343,25 +364,29 @@ export function PortfolioHistoryCard({
                     cursor={{ stroke: 'rgba(139, 158, 179, 0.4)', strokeWidth: 1 }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12, color: COLORS.axis }} />
-                  <Line
-                    type="monotone"
-                    dataKey="totalAssets"
-                    name="Total Assets"
-                    stroke={COLORS.assets}
-                    strokeWidth={2.5}
-                    dot={false}
-                    activeDot={{ r: 5, fill: COLORS.assets, stroke: '#0a1220', strokeWidth: 2 }}
-                  />
-                  <Line
+                  <Area
                     type="monotone"
                     dataKey="totalDebt"
                     name="Total Debt"
+                    stackId="portfolio"
                     stroke={COLORS.debt}
-                    strokeWidth={2.5}
+                    fill="url(#portfolioDebtArea)"
+                    fillOpacity={1}
                     dot={false}
                     activeDot={{ r: 5, fill: COLORS.debt, stroke: '#0a1220', strokeWidth: 2 }}
                   />
-                </LineChart>
+                  <Area
+                    type="monotone"
+                    dataKey="assetStack"
+                    name="Total Assets"
+                    stackId="portfolio"
+                    stroke={COLORS.assets}
+                    fill="url(#portfolioAssetsArea)"
+                    fillOpacity={1}
+                    dot={false}
+                    activeDot={{ r: 5, fill: COLORS.assets, stroke: '#0a1220', strokeWidth: 2 }}
+                  />
+                </AreaChart>
               </ResponsiveContainer>
             </SensitiveBlock>
           </>
