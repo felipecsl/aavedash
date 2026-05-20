@@ -20,6 +20,7 @@ import {
 } from './components/dashboard/privacyStorage';
 import { usePortfolioMonitor } from './hooks/usePortfolioMonitor';
 import { usePositionDetailsData } from './hooks/usePositionDetailsData';
+import { useWatchdogConfig } from './hooks/useWatchdogConfig';
 
 export default function App() {
   const {
@@ -58,6 +59,8 @@ export default function App() {
     selectedLoan,
     selectedVault,
   });
+
+  const { watchdog: watchdogConfig } = useWatchdogConfig();
 
   const computed = useMemo(() => computeLoanMetrics(selectedLoan), [selectedLoan]);
   const portfolio = useMemo(() => {
@@ -200,6 +203,7 @@ export default function App() {
                         reserveTelemetry={selectedReserveTelemetry}
                         reserveTelemetryError={reserveTelemetryError}
                         selectedLoan={selectedLoan}
+                        watchdog={watchdogConfig}
                       />
                     </>
                   )}
