@@ -20,6 +20,7 @@ import type { InterestSnapshot, PortfolioSnapshot } from '../api/aaveMonitor';
 import { SensitiveBlock, SensitiveValue } from './dashboard/privacy';
 import type { BorrowRateSample } from './ReserveCharts';
 import { buildBorrowRateMovingAveragePoints } from '../lib/portfolioBorrowRateHistory';
+import { buildBorrowInterestMovingAveragePoints } from '../lib/portfolioInterestHistory';
 
 type HistoryWindow = '24h' | '7d' | '30d' | '90d' | '180d';
 type HistoryTab = 'portfolio' | 'borrowApr' | 'borrowInterest';
@@ -77,13 +78,6 @@ export function PortfolioHistoryCard({
     const cutoff = currentTimeMs - selected.durationMs;
     return samples.filter((s) => s.timestamp >= cutoff);
   }, [currentTimeMs, samples, windowValue]);
-
-  const filteredBorrowInterestSnapshots = useMemo(() => {
-    const selected = HISTORY_WINDOWS.find((entry) => entry.value === windowValue);
-    if (!selected) return borrowInterestSnapshots;
-    const cutoff = currentTimeMs - selected.durationMs;
-    return borrowInterestSnapshots.filter((snapshot) => snapshot.timestamp >= cutoff);
-  }, [borrowInterestSnapshots, currentTimeMs, windowValue]);
 
   const { data, maxValue, latest } = useMemo(() => {
     if (filtered.length === 0) {
@@ -144,39 +138,39 @@ export function PortfolioHistoryCard({
   const {
     data: borrowInterestData,
     totalBorrowInterest,
-    averageBorrowInterest,
     maxBorrowInterest,
     endBorrowInterestCumulative,
+    latestBorrowInterestMovingAverage,
   } = useMemo(() => {
-    if (filteredBorrowInterestSnapshots.length === 0) {
+    if (borrowInterestSnapshots.length === 0) {
       return {
         data: [],
         totalBorrowInterest: 0,
-        averageBorrowInterest: 0,
         maxBorrowInterest: 0,
         endBorrowInterestCumulative: 0,
+        latestBorrowInterestMovingAverage: 0,
       };
     }
 
-    const points = filteredBorrowInterestSnapshots.map((snapshot) => ({
-      timestamp: snapshot.timestamp,
-      deltaUsd: snapshot.deltaUsd,
-      cumulativeUsd: snapshot.cumulativeUsd,
-    }));
+    const selected = HISTORY_WINDOWS.find((entry) => entry.value === windowValue);
+    const cutoff = selected ? currentTimeMs - selected.durationMs : Number.NEGATIVE_INFINITY;
+    const points = buildBorrowInterestMovingAveragePoints(borrowInterestSnapshots).filter(
+      (point) => point.timestamp >= cutoff,
+    );
     const deltas = points.map((point) => point.deltaUsd);
     const total = deltas.reduce((sum, value) => sum + value, 0);
-    const average = deltas.length > 0 ? total / deltas.length : 0;
     const max = deltas.reduce((currentMax, value) => Math.max(currentMax, value), 0);
     const end = points[points.length - 1]?.cumulativeUsd ?? 0;
+    const latestMovingAverage = points[points.length - 1]?.deltaUsdMovingAverage ?? 0;
 
     return {
       data: points,
       totalBorrowInterest: total,
-      averageBorrowInterest: average,
       maxBorrowInterest: max,
       endBorrowInterestCumulative: end,
+      latestBorrowInterestMovingAverage: latestMovingAverage,
     };
-  }, [filteredBorrowInterestSnapshots]);
+  }, [borrowInterestSnapshots, currentTimeMs, windowValue]);
 
   const xTickFormatter = useMemo(() => {
     if (data.length < 2) return (v: number) => String(v);
@@ -485,10 +479,10 @@ export function PortfolioHistoryCard({
                 }
               />
               <Stat
-                label="Daily avg"
+                label="7d Avg"
                 value={
                   <SensitiveValue hidden={hideSensitiveValues}>
-                    {fmtUsd(averageBorrowInterest)}
+                    {fmtUsd(latestBorrowInterestMovingAverage)}
                   </SensitiveValue>
                 }
               />
@@ -544,6 +538,7 @@ export function PortfolioHistoryCard({
                       const point = payload[0];
                       const ts = point?.payload?.timestamp as number | undefined;
                       const delta = Number(point?.payload?.deltaUsd ?? 0);
+                      const movingAverage = Number(point?.payload?.deltaUsdMovingAverage ?? 0);
                       const cumulative = Number(point?.payload?.cumulativeUsd ?? 0);
                       return (
                         <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-lg">
@@ -559,6 +554,9 @@ export function PortfolioHistoryCard({
                           <p style={{ color: COLORS.borrow }} className="font-semibold">
                             Interest: {fmtUsd(delta)}
                           </p>
+                          <p style={{ color: COLORS.average }} className="font-semibold">
+                            7d Avg: {fmtUsd(movingAverage)}
+                          </p>
                           <p className="text-muted-foreground">Cumulative: {fmtUsd(cumulative)}</p>
                         </div>
                       );
@@ -573,6 +571,17 @@ export function PortfolioHistoryCard({
                     name="Daily"
                     fill={COLORS.borrow}
                     radius={[3, 3, 0, 0]}
+                  />
+                  <Line
+                    yAxisId="delta"
+                    type="monotone"
+                    dataKey="deltaUsdMovingAverage"
+                    name="7d Avg"
+                    stroke={COLORS.average}
+                    strokeWidth={2}
+                    strokeDasharray="6 5"
+                    dot={false}
+                    activeDot={{ r: 4 }}
                   />
                   <Line
                     yAxisId="cumulative"
