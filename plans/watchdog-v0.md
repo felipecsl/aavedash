@@ -2,7 +2,7 @@
 
 ## Context
 
-The Aave loan monitor currently only alerts via Telegram when health factor drops. This plan adds an opt-in watchdog that can automatically repay stablecoin debt to prevent liquidation. It uses an "adjusted HF" that excludes same-asset collateral (since the bot would withdraw it to repay), ensuring the repay operation doesn't worsen the position.
+aash currently only alerts via Telegram when health factor drops. This plan adds an opt-in watchdog that can automatically repay stablecoin debt to prevent liquidation. It uses an "adjusted HF" that excludes same-asset collateral (since the bot would withdraw it to repay), ensuring the repay operation doesn't worsen the position.
 
 **Key decisions:** env var for private key, stablecoins only, trigger at HF < 1.25, target HF >= 1.5, dry-run by default.
 

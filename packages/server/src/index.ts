@@ -166,7 +166,7 @@ app.post('/api/telegram/test', async (_req, res) => {
 
   const success = await telegram.sendMessage(
     config.telegram.chatId,
-    '\u{2705} <b>Test notification</b>\n\nAave Loan Monitor is connected and working.',
+    '\u{2705} <b>Test notification</b>\n\naash is connected and working.',
   );
 
   if (success) {
@@ -333,7 +333,7 @@ telegram.onCommand('help', async (chatId) => {
   await telegram.sendMessage(
     chatId,
     [
-      '<b>Aave Loan Monitor</b>',
+      '<b>DeFi risk console</b>',
       '',
       ...TELEGRAM_BOT_COMMANDS.map((command) => `/${command.command} — ${command.description}`),
     ].join('\n'),
