@@ -60,7 +60,7 @@ export default function App() {
     selectedVault,
   });
 
-  const { watchdog: watchdogConfig } = useWatchdogConfig();
+  const watchdogState = useWatchdogConfig();
 
   const computed = useMemo(() => computeLoanMetrics(selectedLoan), [selectedLoan]);
   const portfolio = useMemo(() => {
@@ -203,7 +203,7 @@ export default function App() {
                         reserveTelemetry={selectedReserveTelemetry}
                         reserveTelemetryError={reserveTelemetryError}
                         selectedLoan={selectedLoan}
-                        watchdog={watchdogConfig}
+                        watchdogState={watchdogState}
                       />
                     </>
                   )}
