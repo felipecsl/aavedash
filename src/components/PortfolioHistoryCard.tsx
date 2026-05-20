@@ -502,13 +502,12 @@ export function PortfolioHistoryCard({
                   data={borrowInterestData}
                   style={CHART_STYLE}
                   margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+                  barCategoryGap="24%"
+                  barGap={0}
                 >
                   <CartesianGrid strokeDasharray="5 5" stroke={COLORS.grid} vertical={false} />
                   <XAxis
                     dataKey="timestamp"
-                    type="number"
-                    scale="time"
-                    domain={['dataMin', 'dataMax']}
                     tickFormatter={borrowInterestXTickFormatter}
                     tick={{ fill: COLORS.axis, fontSize: 12 }}
                     tickLine={false}
