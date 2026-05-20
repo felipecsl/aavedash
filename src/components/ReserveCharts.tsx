@@ -665,6 +665,8 @@ export function InterestAccrualHistoryCard({
                   data={data}
                   style={CHART_STYLE}
                   margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+                  barCategoryGap="24%"
+                  barGap={0}
                 >
                   <CartesianGrid
                     strokeDasharray="5 5"
@@ -673,9 +675,6 @@ export function InterestAccrualHistoryCard({
                   />
                   <XAxis
                     dataKey="timestamp"
-                    type="number"
-                    scale="time"
-                    domain={['dataMin', 'dataMax']}
                     tickFormatter={xTickFormatter}
                     tick={{ fill: CHART_COLORS.axis, fontSize: 12 }}
                     tickLine={false}
