@@ -237,11 +237,6 @@ function StatusCard({
           value={Number.isFinite(computed.healthFactor) ? computed.healthFactor.toFixed(2) : '∞'}
           caption="Liquidation when HF < 1.0"
         />
-        <KpiCard
-          title="Adjusted HF"
-          value={Number.isFinite(computed.adjustedHF) ? computed.adjustedHF.toFixed(2) : '∞'}
-          caption="Excludes same-asset collateral (watchdog view)"
-        />
         <LiquidationKpi hideSensitiveValues={hideSensitiveValues} computed={computed} />
         <KpiCard
           hideSensitiveValues={hideSensitiveValues}

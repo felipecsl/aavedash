@@ -347,7 +347,7 @@ test('wallet reminder digest includes all non-safe loans when any loan is due', 
   }
 });
 
-test('monitor state uses wallet debt-token balances to project rescue-adjusted HF', async () => {
+test('monitor status tracks wallet debt-token balances for repay coverage', async () => {
   const telegram = createTelegramStub();
 
   const monitor = new Monitor(
@@ -425,8 +425,8 @@ test('monitor state uses wallet debt-token balances to project rescue-adjusted H
       .states.find((entry) => entry.marketName === 'proto_mainnet_v3');
     assert.ok(state);
     assert.equal(state.healthFactor, 1.6);
-    assert.equal(state.adjustedHF, 1600 / 750);
     assert.equal(state.borrowRate, 0);
+    assert.equal(monitor.getStatus().totalWalletBorrowedAssetUsd, 250);
   } finally {
     globalThis.fetch = originalFetch;
   }

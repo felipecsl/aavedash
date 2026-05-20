@@ -90,10 +90,9 @@ export function formatStatusMessage(
     for (const state of visibleStates) {
       const addr = `${state.wallet.slice(0, 6)}...${state.wallet.slice(-4)}`;
       const hf = Number.isFinite(state.healthFactor) ? state.healthFactor.toFixed(2) : '∞';
-      const adjHf = Number.isFinite(state.adjustedHF) ? state.adjustedHF.toFixed(2) : '∞';
       lines.push(
         `${state.currentZone.emoji} <code>${addr}</code> · ${state.marketName}`,
-        `   HF: <b>${hf}</b> · Adjusted HF: <b>${adjHf}</b> · Rate: <b>${fmtBorrowRate(state.borrowRate)}</b> · Utilization: <b>${fmtUtilization(state.utilizationRate)}</b> · Zone: ${state.currentZone.label}`,
+        `   HF: <b>${hf}</b> · Rate: <b>${fmtBorrowRate(state.borrowRate)}</b> · Utilization: <b>${fmtUtilization(state.utilizationRate)}</b> · Zone: ${state.currentZone.label}`,
         '',
       );
     }

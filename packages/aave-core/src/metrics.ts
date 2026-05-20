@@ -1,5 +1,4 @@
 import type {
-  AdjustedHFResult,
   AssetLiquidation,
   AssetPosition,
   BadgeTone,
@@ -84,35 +83,6 @@ export function portfolioHealthFactorBand(hf: number): {
   };
 }
 
-export function computeAdjustedHF(loan: LoanPosition): AdjustedHFResult {
-  const debt = loan.totalBorrowedUsd;
-  const borrowedSymbols = new Set(loan.borrowed.map((b) => b.symbol));
-
-  const nonSameAssets = loan.supplied.filter((asset) => !borrowedSymbols.has(asset.symbol));
-  const sameAssets = loan.supplied.filter((asset) => borrowedSymbols.has(asset.symbol));
-
-  const adjustedCollateralUSD = nonSameAssets.reduce((sum, asset) => sum + asset.usdValue, 0);
-  const adjustedLt = weightedAverage(nonSameAssets, (asset) => asset.liqThreshold);
-  const sameAssetSuppliedUSD = sameAssets.reduce((sum, asset) => sum + asset.usdValue, 0);
-  const sameAssetSuppliedAmount = sameAssets.reduce((sum, asset) => sum + asset.amount, 0);
-
-  const adjustedHF =
-    debt > 0 && adjustedCollateralUSD > 0
-      ? (adjustedCollateralUSD * adjustedLt) / debt
-      : debt > 0
-        ? 0
-        : Infinity;
-
-  return {
-    adjustedHF,
-    adjustedCollateralUSD,
-    adjustedLt,
-    sameAssetSuppliedUSD,
-    sameAssetSuppliedAmount,
-    debt,
-  };
-}
-
 export function computeLoanMetrics(loan: LoanPosition | null): Computed {
   if (!loan) {
     return {
@@ -137,7 +107,6 @@ export function computeLoanMetrics(loan: LoanPosition | null): Computed {
       borrowPowerUsed: 0,
       equityMoveFor10Pct: 0,
       collateralBufferUSD: 0,
-      adjustedHF: Infinity,
       alertHF: false,
       alertLTV: false,
       ltvMax: 0,
@@ -232,7 +201,6 @@ export function computeLoanMetrics(loan: LoanPosition | null): Computed {
     };
   });
 
-  const { adjustedHF } = computeAdjustedHF(loan);
   const alertHF = healthFactor < 1.5;
   const alertLTV = ltv > 0.7 * lt;
 
@@ -258,7 +226,6 @@ export function computeLoanMetrics(loan: LoanPosition | null): Computed {
     borrowPowerUsed,
     equityMoveFor10Pct,
     collateralBufferUSD,
-    adjustedHF,
     alertHF,
     alertLTV,
     ltvMax,

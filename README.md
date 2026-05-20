@@ -195,7 +195,7 @@ A backend monitoring service can poll your positions and send Telegram alerts wh
 On server startup, Telegram command metadata is synced with `setMyCommands`, so the in-app slash-command menu matches the backend command handlers.
 The Telegram `/status` command includes a loan-focused portfolio summary with average health factor, Net APY, total collateral, total debt, portfolio borrow power used, and repay coverage (USD and %), plus each loan's current borrow rate and utilization percentage.
 Loan-specific Telegram alerts, reminders, recoveries, all-clear messages, and watchdog notices include the current borrow rate percentage for that loan.
-Per-loan `Adj` in Telegram reflects the projected HF after repaying with the full wallet balance of matching debt tokens, capped by that loan's debt.
+Watchdog dry-run/live notices and action logs include the authoritative projected HF from the rescue contract preview.
 Each `/status` loan row uses the human-readable market name, so Morpho positions display labels like `morpho_cbBTC_USDC` instead of raw market IDs.
 The `/status` footer shows `Last updated` with both an absolute timestamp and relative time (e.g. `3 minutes ago`).
 Reminder alerts include a human-readable elapsed duration label (e.g. `2h 40m ago`).

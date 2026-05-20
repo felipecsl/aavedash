@@ -117,6 +117,7 @@ For the open-ended top zone (`safe`), `maxHF` may be sent as `null` in JSON and 
 - **Worsening zones** notify immediately (e.g. Comfort to Watch, Watch to Alert).
 - **Critical zone** bypasses debounce — instant notification.
 - Loan-specific alerts, reminders, recoveries, all-clear messages, and watchdog notices include the current borrow rate percentage for that loan.
+- Watchdog dry-run/live notices and action logs include projected HF from the rescue contract preview; regular status and zone alerts only show current HF.
 - Other zone transitions require **2 consecutive checks** (~10 min) before alerting.
 - **Recovery** sends a single message, then a 30-minute cooldown.
 - If stuck in a non-safe zone for 30+ minutes, a **reminder** is sent with a human-readable elapsed duration (e.g. `2h 40m ago`).

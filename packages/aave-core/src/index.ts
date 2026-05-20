@@ -1,6 +1,5 @@
 export type {
   AaveMarket,
-  AdjustedHFResult,
   AssetLiquidation,
   AssetPosition,
   BadgeTone,
@@ -40,7 +39,6 @@ export {
 
 export {
   clamp,
-  computeAdjustedHF,
   computeLoanMetrics,
   computePortfolioSummary,
   fromBps,

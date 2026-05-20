@@ -24,7 +24,6 @@ import type { AlertConfig } from './storage.js';
 import type { TelegramClient } from './telegram.js';
 import { Watchdog, type WatchdogLogEntry } from './watchdog.js';
 import { logger } from './logger.js';
-import { computeRescueAdjustedHF } from './rescueMetrics.js';
 import { fetchReserveTelemetry as defaultFetchReserveTelemetry } from './reserveTelemetry.js';
 
 export type ReserveTelemetryFetcher = (
@@ -39,7 +38,6 @@ export type LoanAlertState = {
   marketName: string;
   wallet: string;
   healthFactor: number;
-  adjustedHF: number;
   borrowRate: number;
   utilizationRate?: number;
   debtUsd: number;
@@ -330,8 +328,6 @@ export class Monitor {
     for (const loan of loans) {
       const metrics = computeLoanMetrics(loan);
       metricsCache.set(loan.id, metrics);
-      const adjustedHF = computeRescueAdjustedHF(loan, walletBorrowedAssetBalances);
-      const notificationMetrics = { ...metrics, adjustedHF };
       const zone = classifyZone(metrics.healthFactor, this.hydrateZones(config.zones));
       const stateKey = `${address}-${loan.id}`;
       activeStateKeys.add(stateKey);
@@ -384,7 +380,6 @@ export class Monitor {
           marketName: loan.marketName,
           wallet: address,
           healthFactor: metrics.healthFactor,
-          adjustedHF,
           borrowRate: metrics.rBorrow,
           utilizationRate,
           debtUsd: metrics.debt,
@@ -404,7 +399,6 @@ export class Monitor {
       const previousZone = existing.currentZone;
       existing.marketName = loan.marketName;
       existing.healthFactor = metrics.healthFactor;
-      existing.adjustedHF = adjustedHF;
       existing.borrowRate = metrics.rBorrow;
       existing.utilizationRate = this.resolveUtilization(loan, telemetryMap);
       existing.debtUsd = metrics.debt;
@@ -417,7 +411,7 @@ export class Monitor {
       if (zone.name !== 'safe' && existing.stuckSince) {
         reminderDigestEntries.push({
           state: existing,
-          message: this.formatReminder(loan, notificationMetrics, zone, now - existing.stuckSince),
+          message: this.formatReminder(loan, metrics, zone, now - existing.stuckSince),
         });
       }
 
@@ -448,7 +442,7 @@ export class Monitor {
         if (chatId && (shouldNotify || isCritical)) {
           pendingNotifications.push({
             kind: 'transition',
-            message: this.formatZoneTransition(loan, notificationMetrics, zone, previousZone),
+            message: this.formatZoneTransition(loan, metrics, zone, previousZone),
           });
           existing.lastNotifiedZone = zone.name;
           existing.lastNotifiedAt = now;
@@ -459,12 +453,12 @@ export class Monitor {
           if (zone.name === 'safe') {
             pendingNotifications.push({
               kind: 'all-clear',
-              message: this.formatAllClear(loan, notificationMetrics),
+              message: this.formatAllClear(loan, metrics),
             });
           } else {
             pendingNotifications.push({
               kind: 'recovery',
-              message: this.formatRecovery(loan, notificationMetrics, zone, previousZone),
+              message: this.formatRecovery(loan, metrics, zone, previousZone),
             });
           }
           existing.lastNotifiedZone = zone.name;
@@ -698,7 +692,6 @@ export class Monitor {
     },
     metrics: {
       healthFactor: number;
-      adjustedHF: number;
       rBorrow: number;
       assetLiquidations: AssetLiquidation[];
     },
@@ -706,7 +699,6 @@ export class Monitor {
     previousZone: Zone,
   ): string {
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '∞';
-    const adjHf = Number.isFinite(metrics.adjustedHF) ? metrics.adjustedHF.toFixed(2) : '∞';
 
     const lines = [
       `${zone.emoji} <b>${zone.label}</b> — Loan Health Changed`,
@@ -714,7 +706,7 @@ export class Monitor {
       `Market: ${loan.marketName}`,
       `Borrowed: $${loan.totalBorrowedUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${loan.borrowed.map((b) => b.symbol).join('+')} | Collateral: $${loan.totalSuppliedUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
       '',
-      `HF: <b>${hf}</b> · Adjusted HF: <b>${adjHf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
+      `HF: <b>${hf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
       `Zone: ${zone.emoji} ${zone.label} (was ${previousZone.emoji} ${previousZone.label})`,
       `Action: ${zone.action}`,
       '',
@@ -731,34 +723,32 @@ export class Monitor {
 
   private formatRecovery(
     loan: { marketName: string; borrowed: { symbol: string }[] },
-    metrics: { healthFactor: number; adjustedHF: number; rBorrow: number },
+    metrics: { healthFactor: number; rBorrow: number },
     zone: Zone,
     previousZone: Zone,
   ): string {
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '∞';
-    const adjHf = Number.isFinite(metrics.adjustedHF) ? metrics.adjustedHF.toFixed(2) : '∞';
 
     return [
       `${zone.emoji} <b>IMPROVING</b> — Zone Recovery`,
       '',
       `Market: ${loan.marketName} · ${loan.borrowed.map((b) => b.symbol).join('+')}`,
-      `HF: <b>${hf}</b> · Adjusted HF: <b>${adjHf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
+      `HF: <b>${hf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
       `Zone: ${zone.emoji} ${zone.label} (was ${previousZone.emoji} ${previousZone.label})`,
     ].join('\n');
   }
 
   private formatAllClear(
     loan: { marketName: string; borrowed: { symbol: string }[] },
-    metrics: { healthFactor: number; adjustedHF: number; rBorrow: number },
+    metrics: { healthFactor: number; rBorrow: number },
   ): string {
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '∞';
-    const adjHf = Number.isFinite(metrics.adjustedHF) ? metrics.adjustedHF.toFixed(2) : '∞';
 
     return [
       `\u{1F7E2} <b>ALL CLEAR</b> — Back to Safe`,
       '',
       `Market: ${loan.marketName} · ${loan.borrowed.map((b) => b.symbol).join('+')}`,
-      `HF: <b>${hf}</b> · Adjusted HF: <b>${adjHf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
+      `HF: <b>${hf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
       '',
       `All positions are healthy. Monitoring continues.`,
     ].join('\n');
@@ -766,19 +756,18 @@ export class Monitor {
 
   private formatReminder(
     loan: { marketName: string; borrowed: { symbol: string }[] },
-    metrics: { healthFactor: number; adjustedHF: number; rBorrow: number },
+    metrics: { healthFactor: number; rBorrow: number },
     zone: Zone,
     stuckDurationMs: number,
   ): string {
     const hf = Number.isFinite(metrics.healthFactor) ? metrics.healthFactor.toFixed(2) : '∞';
-    const adjHf = Number.isFinite(metrics.adjustedHF) ? metrics.adjustedHF.toFixed(2) : '∞';
     const timeAgo = this.formatTimeAgo(stuckDurationMs);
 
     return [
       `${zone.emoji} <b>REMINDER</b> — Still in ${zone.label} zone`,
       '',
       `Market: ${loan.marketName} · ${loan.borrowed.map((b) => b.symbol).join('+')}`,
-      `HF: <b>${hf}</b> · Adjusted HF: <b>${adjHf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
+      `HF: <b>${hf}</b> · Borrow rate: <b>${this.formatBorrowRate(metrics.rBorrow)}</b>`,
       `Duration: ${timeAgo} ago`,
       `Action: ${zone.action}`,
     ].join('\n');
